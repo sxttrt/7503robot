@@ -59,8 +59,6 @@ def validate(config, mode):
             raise ValueError(f'retries.{state} 必须是非负整数')
     if type(mission.get('confirm_end_qr')) is not bool:
         raise ValueError('confirm_end_qr 必须是 true 或 false')
-    if type(mission.get('allow_estimated_lift')) is not bool:
-        raise ValueError('allow_estimated_lift 必须是 true 或 false')
     if mode == 'robot' and mission['game_duration_sec'] != 180:
         raise ValueError('实机比赛时间必须为课程规定的 180 秒')
     for state in ('DOCK_ENTER', 'LIFT_UP', 'NAV_END', 'LIFT_DOWN', 'DOCK_EXIT'):

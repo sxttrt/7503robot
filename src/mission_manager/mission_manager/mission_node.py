@@ -35,27 +35,12 @@ class ROSBackend:
                         'lift': self.lift, 'qr': self.qr}
 
     def ready(self):
-        return (self.healthy() and self.stationary() and
-                self.safety.latest.get('lift_is_up') is False and
-                (self.safety.latest.get('lift_state_source') == 'measured' or
-                 (self.safety.policy['allow_estimated_lift'] and
-                  self.safety.latest.get('lift_state_source') == 'estimated')) and
-                self.safety.available() and self.navigation.available() and
-                self.docking.available() and self.lift.available())
+        # 在线反馈与接口可用即可启用，不要求额外的升降传感器或静止确认。
+        return (self.healthy() and self.safety.available() and self.navigation.available()
+                and self.docking.available() and self.lift.available())
 
     def healthy(self):
         return self.safety.healthy()
-
-    def stationary(self):
-        """静止是动作交接条件，模块在线不能代替机器人已经停下。"""
-        return self.safety.fresh() and self.safety.latest['stopped'] is True
-
-    def cargo_observation(self):
-        return self.safety.lift_observation()
-
-    def cargo_matches(self, cargo):
-        """运输和空载阶段持续核对机构状态，发现意外落下或升起即停止。"""
-        return self.safety.lift_matches(cargo == 'UP')
 
     def start(self, kind, request, payload, callback):
         if self.node.closing:
@@ -67,13 +52,16 @@ class ROSBackend:
         self.modules[kind].cancel(request)
 
     def stop(self, request, callback):
-        self.safety.stop(request, callback)
+        def completed(stop_request, success, details):
+            if success:
+                for module in (self.navigation, self.docking, self.lift):
+                    module.release_cancelled()
+            callback(stop_request, success, details)
+        self.safety.stop(request, completed)
 
     def poll(self):
-        self.navigation.poll()
-        self.docking.poll()
-        self.lift.poll()
-        self.safety.poll(self.navigation.idle() and self.docking.idle() and self.lift.idle())
+        # 通信由 ROS 异步回调驱动，不增加完成后的二次握手。
+        pass
 
 
 class MissionNode(Node):

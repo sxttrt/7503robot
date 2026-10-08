@@ -1,34 +1,6 @@
-# 模拟场景只用于测试，不会驱动底盘。启动时通过 scenario:=名称选择。
-# action_duration_sec、lift_duration_sec、取消延迟的单位均为秒。
-# failures 中的数字表示该状态前几次请求失败，而不是随机概率。
+# 模拟场景，不连接真实硬件。延迟和超时的单位均为秒。
 scenarios:
   normal: {}
-  motion_after_finish:
-    # 正常完成之后又反馈运动；应再次停止，保留完成记录并进入故障。
-    motion_after_finish: true
-  late_lift_request:
-    # 联调测试将升降时限设为 1.5 秒，验证 2 秒后到达的旧请求被拒绝。
-    lift_dispatch_delay_sec: 2.0
-  motion_during_end_qr:
-    # 等待目标区扫码时仍在运动，禁止降下货架。
-    motion_during_end_qr: true
-  lift_drop_during_stop:
-    # 运输失败后的停机阶段机构意外下降，携货记录必须变为 UNKNOWN。
-    failures: {NAV_END: 1}
-    lift_drop_during_stop: true
-  stop_fail_once:
-    # 首次停止报告失败，供人工再次调用停止服务的回归测试使用。
-    failures: {NAV_RACK: 1}
-    stop_failures: 1
-  navigation_success_while_moving:
-    # 即便 Action 成功，仍持续报告底盘在运动；主程序不能开始扫码或对准。
-    navigation_success_while_moving: true
-  unexpected_lift_drop:
-    # 搬运阶段反馈机构意外下降，应停止并标记货物状态未知。
-    unexpected_lift_drop: true
-  fault_during_delivery:
-    # 故障时仍发布真实静止反馈，验证能够确认停机而不会恢复任务。
-    fault_during_delivery: true
   navigation_fail_once:
     failures: {NAV_RACK: 1}
   navigation_always_fails:
@@ -43,8 +15,6 @@ scenarios:
     qr_stale: true
   docking_failure:
     failures: {DOCK_ENTER: 1}
-  docking_not_ready:
-    not_ready_to_lift: true
   lift_failure:
     failures: {LIFT_UP: 1}
   lift_timeout:
@@ -55,21 +25,21 @@ scenarios:
     failures: {LIFT_DOWN: 1}
   exit_failure:
     failures: {DOCK_EXIT: 1}
-  estimated_lift:
-    lift_state_source: estimated
   delayed_cancel_result:
     timeout_states: [NAV_RACK]
     cancel_result_delay_sec: 1.0
   delayed_goal_accept:
     accept_delay_sec: 1.0
   health_dropout:
-    health_dropout_after_sec: 2.0
+    # 在首个货架尚未完成时中断在线消息，验证断联后停止。
+    health_dropout_after_sec: 0.8
+  fault_during_delivery:
+    fault_during_delivery: true
   stop_failure:
     failures: {NAV_RACK: 1}
     stop_failure: true
-  stop_without_confirmation:
-    # 第一个动作结束后停止状态始终不确认，测试代码另使用此配置。
+  stop_fail_once:
     failures: {NAV_RACK: 1}
-    stop_never_confirmed: true
+    stop_failures: 1
   no_start:
     no_start: true

@@ -10,9 +10,9 @@ float64 max_duration_sec
 ---
 # 结果：成功必须是动作实际完成，不能仅表示收到请求。
 bool success
-# ENTER 成功时必须为真，表示位置已满足机械托举条件。
+# 兼容显示字段：可表示进入后可托举；主程序只使用 success，不再二次确认。
 bool ready_to_lift
-# EXIT 成功时必须为真，表示底盘已经脱离货架。
+# 兼容显示字段：可表示退出后已脱离；主程序不强制校验此字段。
 bool exited
 string error_code
 string message

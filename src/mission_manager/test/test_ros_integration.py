@@ -22,14 +22,11 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
 
 @pytest.mark.parametrize('scenario,expected', [
     ('normal', 'FINISHED'),
-    ('navigation_success_while_moving', 'FAULT'),
-    ('unexpected_lift_drop', 'FAULT'),
     ('fault_during_delivery', 'FAULT'),
     ('navigation_fail_once', 'FINISHED'),
     ('navigation_always_fails', 'FAULT'),
     ('navigation_timeout', 'FAULT'),
     ('wrong_rack_qr', 'FAULT'),
-    ('docking_not_ready', 'FAULT'),
     ('lift_failure', 'FAULT'),
     ('lift_timeout', 'FAULT'),
     ('delivery_navigation_failure', 'FAULT'),
@@ -37,19 +34,14 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
     ('exit_failure', 'FAULT'),
     ('health_dropout', 'FAULT'),
     ('stop_failure', 'FAULT'),
-    ('stop_without_confirmation', 'FAULT'),
     ('delayed_cancel_result', 'FAULT'),
     ('delayed_goal_accept', 'FAULT'),
     ('match_time_up', 'FINISHED'),
     ('operator_stop', 'STOPPED'),
     ('shutdown_during_delivery', 'STOPPED'),
-    ('motion_during_end_qr', 'FAULT'),
-    ('lift_drop_during_stop', 'FAULT'),
     ('operator_retries_stop_after_fault', 'FAULT'),
     ('shutdown_during_fault_stop', 'FAULT'),
     ('shutdown_after_unconfirmed_stop', 'FAULT'),
-    ('motion_after_finish', 'FAULT'),
-    ('late_lift_request', 'FAULT'),
 ])
 def test_real_ros_execution(tmp_path, scenario, expected):
     """通过订阅公开任务状态判断结果，不直接调用状态机的成功函数。"""
@@ -108,7 +100,7 @@ def test_real_ros_execution(tmp_path, scenario, expected):
             if process.poll() is not None:
                 raise AssertionError('启动进程异常退出：\n' + log_file.read_text(encoding='utf-8'))
             # 观察端完成发现并收到就绪状态后再启用，防止漏掉第一货架的早期事件。
-            if (states and states[-1].get('ready_to_arm') and not requested_arm and
+            if (states and health_states and states[-1].get('ready_to_arm') and not requested_arm and
                     arm_client.service_is_ready()):
                 arm_client.call_async(Trigger.Request())
                 requested_arm = True
@@ -151,37 +143,26 @@ def test_real_ros_execution(tmp_path, scenario, expected):
                     repeated_stop_seen = True
                 if not repeated_stop_seen:
                     continue
-            if scenario == 'motion_after_finish' and states and states[-1]['state'] == 'FINISHED':
-                continue
             if states and states[-1]['state'] in ('FINISHED', 'FAULT', 'STOPPED'):
                 break
         assert states and states[-1]['state'] == expected, (states[-1:] or '无状态')
         final = states[-1]
+        # 默认流程只在货架识别 QR，到目标区由导航成功直接进入放下。
+        assert not any(item['state'] == 'WAIT_END_QR' for item in states)
+        assert health_states and all(set(item) == {'ready', 'fault'} for item in health_states)
         if scenario == 'operator_retries_stop_after_fault':
             assert repeated_stop_seen and repeat_response.done() and repeat_response.result().success
             assert final['reason'] == original_fault
             assert final['stop']['status'] == 'CONFIRMED'
         if scenario == 'shutdown_after_unconfirmed_stop':
             assert requested_stop and final['stop']['status'] == 'CONFIRMED'
-        if scenario == 'late_lift_request':
-            assert health_states and not any(data['lift_is_up'] for data in health_states)
-            assert final['cargo'] == 'UNKNOWN' and final['stop']['status'] == 'CONFIRMED'
-            assert not any(state['state'] == 'NAV_END' for state in states)
         if scenario == 'shutdown_during_fault_stop':
             assert requested_stop and '模拟导航失败' in final['reason']
-        if scenario in ('motion_during_end_qr', 'lift_drop_during_stop'):
-            assert not any(state['state'] == 'LIFT_DOWN' for state in states)
-            assert final['cargo'] == ('UP' if scenario == 'motion_during_end_qr' else 'UNKNOWN')
-        if scenario == 'navigation_success_while_moving':
-            assert not any(state['state'] in ('WAIT_RACK_QR', 'DOCK_ENTER') for state in states)
-        if scenario == 'unexpected_lift_drop':
-            assert final['cargo'] == 'UNKNOWN'
-            assert not any(state['state'] == 'LIFT_DOWN' for state in states)
         if scenario == 'fault_during_delivery':
             assert final['cargo'] == 'UP'
             assert '停止未得到确认' not in final['reason']
             assert not any(state['state'] == 'LIFT_DOWN' for state in states)
-        if scenario in ('normal', 'navigation_fail_once', 'motion_after_finish'):
+        if scenario in ('normal', 'navigation_fail_once'):
             assert final['completed'] == final['delivered'] == ['A', 'B', 'C', 'D']
             racks = []
             for state in states:
@@ -198,7 +179,7 @@ def test_real_ros_execution(tmp_path, scenario, expected):
         if scenario == 'exit_failure':
             assert final['delivered'] == ['A'] and final['cargo'] == 'EMPTY'
         # 导航失败次数耗尽不能跳过 A 开始 B。
-        if scenario not in ('normal', 'navigation_fail_once', 'motion_after_finish'):
+        if scenario not in ('normal', 'navigation_fail_once'):
             assert not any(state['rack'] == 'B' for state in states)
     finally:
         if process.poll() is None:

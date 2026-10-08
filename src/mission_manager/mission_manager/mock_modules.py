@@ -7,10 +7,8 @@
 import json
 import threading
 import time
-import uuid
 
 from mission_interfaces.action import Dock
-from mission_interfaces.srv import SetLift
 from nav2_msgs.action import NavigateToPose
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -18,7 +16,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
-from std_srvs.srv import Trigger
+from std_srvs.srv import Trigger, SetBool
 
 from .config_loader import load_config, read_yaml
 
@@ -46,9 +44,6 @@ class MockModules(Node):
         self.is_up = False
         self.motion_count = 0
         self.stop_epoch = 0
-        # 启动和停止均生成新令牌，旧命令即使晚到或跨重启也不能重新驱动升降。
-        self.lift_safety_token = uuid.uuid4().hex
-        self.seen_lift_requests = set()
         self.started_at = time.monotonic()
         self.mission_active_at = None
         names = self.config['interfaces']
@@ -63,7 +58,7 @@ class MockModules(Node):
         self.dock_server = ActionServer(self, Dock, names['docking_action'],
                                         self.dock, goal_callback=self.accept_goal,
                                         cancel_callback=self.accept_cancel, callback_group=self.group)
-        self.lift_server = self.create_service(SetLift, names['lift_service'], self.lift,
+        self.lift_server = self.create_service(SetBool, names['lift_service'], self.lift,
                                                callback_group=self.group)
         self.stop_server = self.create_service(Trigger, names['stop_service'], self.stop,
                                                callback_group=self.group)
@@ -170,7 +165,7 @@ class MockModules(Node):
             handle.abort()
         else:
             result.success = True
-            result.ready_to_lift = goal.operation == 'ENTER' and not self.scenario.get('not_ready_to_lift', False)
+            result.ready_to_lift = goal.operation == 'ENTER'
             result.exited = goal.operation == 'EXIT'
             result.message = '模拟动作完成'
             handle.succeed()
@@ -178,20 +173,13 @@ class MockModules(Node):
 
     def lift(self, request, response):
         """升降也是运动；所有返回路径都撤销运动计数，不能提前报告静止。"""
-        # 仅用于回归测试：模拟请求已经发送，但晚于停止请求才开始处理。
-        dispatch_delay = float(self.scenario.get('lift_dispatch_delay_sec', 0.0))
-        if dispatch_delay > 0.0:
-            time.sleep(dispatch_delay)
-        response.request_id = request.request_id
         with self.lock:
-            if (not request.request_id or request.safety_token != self.lift_safety_token or
-                    request.request_id in self.seen_lift_requests or self.motion_count != 0):
-                response.success, response.message = False, '旧令牌、重复请求或机构正在运动，拒绝升降'
+            if self.motion_count != 0:
+                response.success, response.message = False, '已有动作正在执行'
                 return response
-            self.seen_lift_requests.add(request.request_id)
             epoch = self.stop_epoch
             self.motion_count += 1
-        state = 'LIFT_UP' if request.up else 'LIFT_DOWN'
+        state = 'LIFT_UP' if request.data else 'LIFT_DOWN'
         begin = time.monotonic()
         try:
             failed = self.should_fail(state)
@@ -214,7 +202,7 @@ class MockModules(Node):
                     if epoch != self.stop_epoch:
                         response.success, response.message = False, '升降已按停止请求中止'
                         return response
-                    self.is_up = bool(request.up)
+                    self.is_up = bool(request.data)
                 response.success, response.message = True, '模拟升降实际完成，状态随后发布'
             return response
         finally:
@@ -224,42 +212,30 @@ class MockModules(Node):
     def stop(self, _request, response):
         with self.lock:
             self.stop_epoch += 1
-            self.lift_safety_token = uuid.uuid4().hex
-            self.seen_lift_requests.clear()
             number = self.stop_epoch
         response.success = (not self.scenario.get('stop_failure', False) and
                             number > int(self.scenario.get('stop_failures', 0)))
-        response.message = '停止请求已执行；等待新鲜静止状态确认'
+        # 成功必须表示停止完成；这里只等待模拟执行循环结束，不依赖客户端握手。
+        deadline = time.monotonic() + 3.0
+        while response.success:
+            with self.lock:
+                if self.motion_count == 0:
+                    break
+            if time.monotonic() >= deadline:
+                response.success = False
+                break
+            time.sleep(0.01)
+        response.message = '停止完成' if response.success else '停止失败或超时'
         return response
 
     def publish_observations(self):
         with self.lock:
             state, rack = self.status.get('state'), self.status.get('rack')
             is_up, stopped = self.is_up, self.motion_count == 0
-            lift_token = self.lift_safety_token
-            stop_requested = self.stop_epoch > 0
-            lift_requested = self.counts.get('LIFT_UP', 0) > 0
             stamp = self.get_clock().now().to_msg()
-        # 故障注入：模拟动作提前报成功、搬运中机构意外落下和模块报错。
-        # 这些仅修改模拟反馈，不操作任何硬件。
-        if self.scenario.get('navigation_success_while_moving') and state == 'NAV_RACK':
-            stopped = False
-        if self.scenario.get('unexpected_lift_drop') and state == 'NAV_END':
-            is_up = False
-        if self.scenario.get('motion_during_end_qr') and state == 'WAIT_END_QR':
-            stopped = False
-        if self.scenario.get('lift_drop_during_stop') and state == 'STOPPING':
-            is_up = False
-        if self.scenario.get('motion_after_finish') and state == 'FINISHED' and self.stop_epoch == 1:
-            stopped = False
         active_elapsed = 0.0 if self.mission_active_at is None else time.monotonic() - self.mission_active_at
         if active_elapsed < float(self.scenario.get('health_dropout_after_sec', 1e9)):
-            health = {'schema_version': 2, 'stamp': {'sec': stamp.sec, 'nanosec': stamp.nanosec},
-                      'modules': {name: True for name in ('navigation', 'qr', 'docking', 'lift', 'base')},
-                      'stopped': stopped and not (stop_requested and self.scenario.get('stop_never_confirmed', False)),
-                      'lift_is_up': is_up,
-                      'lift_safety_token': lift_token,
-                      'lift_state_source': self.scenario.get('lift_state_source', 'measured') if lift_requested else 'measured',
+            health = {'ready': True,
                       'fault': '模拟运输模块故障' if self.scenario.get('fault_during_delivery') and state in ('NAV_END', 'STOPPING') else ''}
             self.health_pub.publish(String(data=json.dumps(health, ensure_ascii=False)))
         self.lift_pub.publish(Bool(data=is_up))

@@ -1,54 +1,42 @@
-"""升降服务适配：携带编号与安全令牌，成功响应必须表示动作实际完成。"""
+"""升降接口：发送升／降，直接使用队友返回的实际完成结果。"""
 
 import time
-
 from std_msgs.msg import Bool
-from mission_interfaces.srv import SetLift
+from std_srvs.srv import SetBool
 
 
 class Lift:
     def __init__(self, node, interfaces, policy, safety):
-        self.node, self.policy, self.safety = node, policy, safety
-        self.client = node.create_client(SetLift, interfaces['lift_service'])
+        self.node, self.safety = node, safety
+        self.client = node.create_client(SetBool, interfaces['lift_service'])
         self.subscription = node.create_subscription(Bool, interfaces['lift_state_topic'], self.on_state, 10)
         self.requests = {}
-        self.pending_results = {}
 
     def on_state(self, message):
-        # 普通 Bool 仅作显示参考，不作为当前升降完成的唯一依据。
+        # 可选的状态显示，不参与主流程的二次到位校验。
         self.safety.last_up = bool(message.data)
         self.safety.last_up_received = time.monotonic()
 
     def available(self):
         return self.client.service_is_ready()
 
-    def idle(self):
-        return not self.requests
-
     def start(self, request, payload, callback):
-        if self.requests or self.pending_results:
-            callback(request, False, {'reason': '旧升降请求或到位确认尚未结束，禁止重复下发'})
+        if self.requests:
+            callback(request, False, {'reason': '已有升降请求，禁止同时下发'})
             return
         if not self.available():
             callback(request, False, {'reason': '升降服务未就绪'})
             return
-        if not self.safety.healthy():
-            callback(request, False, {'reason': '升降请求缺少有效健康状态和当前安全令牌'})
-            return
-        info = {'up': bool(payload['up']), 'callback': callback, 'cancelled': False,
-                'safety_token': self.safety.latest['lift_safety_token'],
-                'begin_ns': self.node.get_clock().now().nanoseconds}
+        info = {'up': bool(payload['up']), 'callback': callback, 'cancelled': False}
         self.requests[request] = info
-        message = SetLift.Request()
-        message.request_id = request
-        message.safety_token = self.safety.latest['lift_safety_token']
-        message.up = info['up']
+        message = SetBool.Request()
+        message.data = info['up']
         try:
-            self.client.call_async(message).add_done_callback(lambda result: self.result(request, result))
+            self.client.call_async(message).add_done_callback(lambda future: self.result(request, future))
         except Exception as exc:
-            # 请求可能已经到达机构，发送异常也不能视为动作已停止。
+            # 由统一停止路径处理可能已到达的请求，避免重复下发。
             info['reported'] = True
-            callback(request, False, {'reason': f'升降请求异常，执行状态未确认：{exc}'})
+            callback(request, False, {'reason': f'升降请求异常：{exc}'})
 
     def result(self, request, future):
         info = self.requests.get(request)
@@ -56,54 +44,19 @@ class Lift:
             return
         try:
             result = future.result()
-            if type(getattr(result, 'success', None)) is not bool:
-                raise ValueError('升降响应缺少合法完成字段')
-            if getattr(result, 'request_id', None) != request:
-                raise ValueError('升降响应的请求编号不匹配，旧请求执行状态仍未确认')
+            success = result.success is True
+            details = {'is_up': info['up'], 'reason': result.message or '升降返回结果'}
         except Exception as exc:
-            # 响应传输异常不能证明机构动作已经终止，仍阻止停止握手提前通过。
-            if not info['cancelled'] and not info.get('reported'):
-                info['reported'] = True
-                info['callback'](request, False, {'reason': f'升降结果异常，执行状态未确认：{exc}'})
-            return
-        self.requests.pop(request)
-        if info['cancelled'] or info.get('reported'):
-            return
-        try:
-            if not result.success:
-                info['callback'](request, False, {'reason': result.message or '升降失败'})
-            else:
-                # 响应和健康状态可能通过不同连接乱序到达，因此等待新鲜状态。
-                info['begin_ns'] = self.node.get_clock().now().nanoseconds
-                self.pending_results[request] = info
-        except Exception as exc:
-            info['callback'](request, False, {'reason': f'升降结果异常：{exc}'})
-
-    def poll(self):
-        if not self.safety.healthy():
-            return
-        data = self.safety.latest
-        for request, info in list(self.pending_results.items()):
-            if data['lift_safety_token'] != info['safety_token']:
-                self.pending_results.pop(request)
-                info['callback'](request, False, {'reason': '升降期间安全令牌已失效，禁止推进流程'})
-                continue
-            if (self.safety.stamp_ns <= info['begin_ns'] or
-                    data.get('lift_is_up') is not info['up'] or data.get('stopped') is not True):
-                continue
-            source = data.get('lift_state_source')
-            if source not in ('measured', 'estimated'):
-                continue
-            self.pending_results.pop(request)
-            allowed = source == 'measured' or self.policy['allow_estimated_lift']
-            info['callback'](request, allowed, {
-                'is_up': info['up'], 'source': source,
-                'reason': '到位确认完成' if allowed else '配置禁止使用推定升降状态',
-            })
+            success, details = False, {'reason': f'升降响应异常：{exc}'}
+        self.requests.pop(request, None)
+        if not info['cancelled'] and not info.get('reported'):
+            info['callback'](request, success, details)
 
     def cancel(self, request):
-        # 服务不能强行撤回；停止接口使旧令牌失效，仍需等旧服务回调结束。
-        info = self.requests.get(request)
-        if info:
-            info['cancelled'] = True
-        self.pending_results.pop(request, None)
+        # Service 不能撤回；停止交给统一停止接口，旧响应不推进任务。
+        if request in self.requests:
+            self.requests[request]['cancelled'] = True
+
+    def release_cancelled(self):
+        # 执行模块确认停止后允许新任务；迟到的旧响应仍会被忽略。
+        self.requests = {key: value for key, value in self.requests.items() if not value['cancelled']}

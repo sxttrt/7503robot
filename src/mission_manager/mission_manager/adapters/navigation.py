@@ -14,7 +14,6 @@ class AsyncAction:
         self.node = node
         self.client = ActionClient(node, action_type, name)
         self.requests = {}
-        self.pending_results = {}
         self.safety = safety
         self.feedback = {}
 
@@ -22,12 +21,15 @@ class AsyncAction:
         return self.client.server_is_ready()
 
     def idle(self):
-        # 停止确认还需要所有旧动作都得到最终结果或被拒绝。
         return not self.requests
 
+    def release_cancelled(self):
+        # 停止模块已报告完成，无需再等待旧动作结果；回调仍按旧编号过滤。
+        self.requests = {key: value for key, value in self.requests.items() if not value['cancelled']}
+
     def send(self, request, goal, callback):
-        if self.requests or self.pending_results:
-            callback(request, False, {'reason': '旧动作尚未结束或尚未确认静止，禁止发送新目标'})
+        if self.requests:
+            callback(request, False, {'reason': '已有动作请求，禁止同时下发新目标'})
             return
         if not self.available():
             callback(request, False, {'reason': '动作服务端未就绪'})
@@ -52,6 +54,13 @@ class AsyncAction:
     def accepted(self, request, future):
         record = self.requests.get(request)
         if record is None:
+            # 停止成功后才接受的旧目标仍要取消，不能变成一项新任务。
+            try:
+                handle = future.result()
+                if handle.accepted:
+                    handle.cancel_goal_async()
+            except Exception:
+                pass
             return
         try:
             handle = future.result()
@@ -98,24 +107,12 @@ class AsyncAction:
                 details['reason'] = details.get('reason') or f'动作结束状态：{response.status}'
                 self.finish(request, False, details)
             else:
-                # 动作结果与底盘状态可能乱序到达，等待结果接收后的新静止状态。
-                record['details'] = details
-                record['finished_ns'] = self.node.get_clock().now().nanoseconds
-                self.requests.pop(request)
-                self.pending_results[request] = record
+                # 信任模块的完成语义：到达并停止后返回成功，直接推进下一步。
+                self.finish(request, True, details)
         except Exception as exc:
             # 已确认 ROS 动作终止，但结果字段无效，不能报告成功。
             self.finish(request, False, {'reason': f'读取动作结果失败：{exc}'})
 
-    def poll(self):
-        """完成动作还须核对实际静止；不能仅凭服务端成功就启动下一项运动。"""
-        if not self.pending_results or self.safety is None or not self.safety.healthy():
-            return
-        for request, record in list(self.pending_results.items()):
-            if self.safety.stamp_ns <= record['finished_ns'] or self.safety.latest['stopped'] is not True:
-                continue
-            self.pending_results.pop(request)
-            record['callback'](request, True, record['details'])
 
     def finish(self, request, success, details):
         record = self.requests.pop(request, None)
@@ -123,7 +120,6 @@ class AsyncAction:
             record['callback'](request, success, details)
 
     def cancel(self, request):
-        self.pending_results.pop(request, None)
         record = self.requests.get(request)
         if record:
             record['cancelled'] = True

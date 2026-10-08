@@ -1,4 +1,4 @@
-"""健康状态和停止确认；停止响应与实际静止状态分别检查。"""
+"""简单在线状态与停止接口：信任执行模块返回的完成结果。"""
 
 import json
 import time
@@ -13,87 +13,39 @@ class Safety:
         self.node, self.policy = node, policy
         self.latest = None
         self.received_at = None
-        self.stamp_ns = None
-        self.last_up_received = None
         self.last_up = None
+        self.last_up_received = None
         self.pending = None
-        self.diagnostic = '等待模块健康状态'
-        # 兼容可靠和尽力发送端，只处理最近状态，避免旧消息队列延迟停止判断。
+        self.diagnostic = '等待在线反馈'
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                          durability=DurabilityPolicy.VOLATILE)
         self.subscription = node.create_subscription(String, interfaces['health_topic'], self.on_status, qos)
         self.client = node.create_client(Trigger, interfaces['stop_service'])
 
     def on_status(self, message):
+        # 队友只需定期发布两个字段，不要求源时间戳、令牌或传感器来源。
         try:
             data = json.loads(message.data)
-            stamp = data['stamp']
-            if type(stamp['sec']) is not int or type(stamp['nanosec']) is not int:
+            if type(data.get('ready')) is not bool or not isinstance(data.get('fault', ''), str):
                 return
-            if not 0 <= stamp['nanosec'] < 1_000_000_000:
-                return
-            stamp_ns = stamp['sec'] * 1_000_000_000 + stamp['nanosec']
-            now_ns = self.node.get_clock().now().nanoseconds
-            age = (now_ns - stamp_ns) / 1e9
-            if stamp_ns <= 0 or age > self.policy['health_timeout_sec'] or age < -self.policy['qr_future_tolerance_sec']:
-                return
-            if self.stamp_ns is not None and stamp_ns <= self.stamp_ns:
-                return
-            if not isinstance(data.get('modules'), dict) or type(data.get('stopped')) is not bool:
-                return
-            if (type(data.get('schema_version')) is not int or data['schema_version'] != 2 or
-                    type(data.get('lift_is_up')) is not bool or
-                    data.get('lift_state_source') not in ('measured', 'estimated') or
-                    not isinstance(data.get('fault'), str) or
-                    not isinstance(data.get('lift_safety_token'), str) or
-                    not data['lift_safety_token'].strip()):
-                return
-            if any(type(data['modules'].get(name)) is not bool
-                   for name in ('navigation', 'qr', 'docking', 'lift', 'base')):
-                return
-            self.latest, self.received_at, self.stamp_ns = data, time.monotonic(), stamp_ns
-        except (ValueError, TypeError, KeyError, AttributeError):
-            self.diagnostic = '健康状态格式错误，等待合法数据'
+            self.latest = {'ready': data['ready'], 'fault': data.get('fault', '')}
+            self.received_at = time.monotonic()
+        except (ValueError, TypeError, AttributeError):
+            self.diagnostic = '在线反馈格式错误'
 
     def fresh(self):
-        """同时检查收包时间和源时间戳，防止延迟状态被额外沿用一个超时周期。"""
-        if self.received_at is None or time.monotonic() - self.received_at >= self.policy['health_timeout_sec']:
-            self.diagnostic = '模块健康状态尚未到达或已过期'
-            return False
-        age = (self.node.get_clock().now().nanoseconds - self.stamp_ns) / 1e9
-        if age >= self.policy['health_timeout_sec'] or age < -self.policy['qr_future_tolerance_sec']:
-            self.diagnostic = '模块健康状态源时间戳已过期或时钟不一致'
-            return False
-        return True
+        return (self.received_at is not None and
+                time.monotonic() - self.received_at < self.policy['health_timeout_sec'])
 
     def healthy(self):
         if not self.fresh():
+            self.diagnostic = '在线反馈未到达或已中断'
             return False
-        modules = self.latest['modules']
-        if any(modules.get(name) is not True for name in ('navigation', 'qr', 'docking', 'lift', 'base')):
-            self.diagnostic = '至少一个必需模块未就绪'
+        if not self.latest['ready'] or self.latest['fault']:
+            self.diagnostic = self.latest['fault'] or '执行模块尚未就绪'
             return False
-        if self.latest.get('fault'):
-            self.diagnostic = '模块故障：' + str(self.latest['fault'])
-            return False
-        self.diagnostic = '健康状态正常'
+        self.diagnostic = '执行模块就绪'
         return True
-
-    def lift_matches(self, up):
-        """实际到位值和反馈来源必须同时满足配置要求。"""
-        return (self.healthy() and self.latest['lift_is_up'] is up and
-                (self.latest['lift_state_source'] == 'measured' or self.policy['allow_estimated_lift']))
-
-    def lift_observation(self):
-        """模块报故障时仍读取合法到位值，防止停机后的携货信息继续失真。
-
-        此方法仅反映升降观察，不能用来证明模块健康或允许恢复运动。
-        """
-        if not self.fresh():
-            return None
-        if self.latest['lift_state_source'] != 'measured' and not self.policy['allow_estimated_lift']:
-            return None
-        return 'UP' if self.latest['lift_is_up'] else 'EMPTY'
 
     def available(self):
         return self.client.service_is_ready()
@@ -102,38 +54,24 @@ class Safety:
         if not self.available():
             callback(request, False, {'reason': '停止服务未就绪'})
             return
-        pending = {'request': request, 'callback': callback, 'ack': False,
-                   'old_token': None if self.latest is None else self.latest['lift_safety_token'],
-                   'begin_ns': self.node.get_clock().now().nanoseconds}
-        self.pending = pending
+        record = {'request': request, 'callback': callback}
+        self.pending = record
         try:
-            future = self.client.call_async(Trigger.Request())
-            future.add_done_callback(lambda result: self.on_stop_response(pending, result))
+            self.client.call_async(Trigger.Request()).add_done_callback(
+                lambda future: self.on_stop_response(record, future))
         except Exception as exc:
             self.pending = None
             callback(request, False, {'reason': f'停止请求异常：{exc}'})
 
-    def on_stop_response(self, pending, future):
-        if self.pending is not pending:
+    def on_stop_response(self, record, future):
+        if self.pending is not record:
             return
+        self.pending = None
         try:
             result = future.result()
-            if not result.success:
-                self.pending = None
-                pending['callback'](pending['request'], False, {'reason': result.message})
-            else:
-                pending['ack'] = True
+            success = result.success is True
+            details = {'reason': result.message or ('停止完成' if success else '停止失败')}
         except Exception as exc:
-            self.pending = None
-            pending['callback'](pending['request'], False, {'reason': str(exc)})
-
-    def poll(self, actions_idle):
-        pending = self.pending
-        if not pending or not pending['ack'] or not actions_idle:
-            return
-        # 必须有请求之后生成的新健康状态，不能用缓存的“已停止”。
-        if (self.fresh() and self.stamp_ns > pending['begin_ns'] and
-                self.latest['lift_safety_token'] != pending.get('old_token') and
-                self.latest['stopped'] is True):
-            self.pending = None
-            pending['callback'](pending['request'], True, {'reason': '停止响应和新鲜静止状态均已确认'})
+            success, details = False, {'reason': f'停止响应异常：{exc}'}
+        # 成功响应即表示执行模块已经停止，不再等待第二份状态或旧动作回执。
+        record['callback'](record['request'], success, details)

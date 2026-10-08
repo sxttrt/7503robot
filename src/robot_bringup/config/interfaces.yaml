@@ -4,7 +4,7 @@
 navigation_action: navigate_to_pose       # nav2_msgs/action/NavigateToPose
 qr_topic: qr/detections                  # std_msgs/msg/String，带图像时间戳的 JSON
 docking_action: docking/execute          # mission_interfaces/action/Dock，新接口提案
-lift_service: lift/set_up                # mission_interfaces/srv/SetLift，携带编号与安全令牌
+lift_service: lift/set_up                # std_srvs/srv/SetBool，true 升起／false 放下，响应代表完成
 lift_state_topic: lift/is_up             # std_msgs/msg/Bool，仅作参考状态
 health_topic: robot/status               # std_msgs/msg/String，健康状态 JSON，新接口提案
 stop_service: safety/stop                # std_srvs/srv/Trigger，新接口提案

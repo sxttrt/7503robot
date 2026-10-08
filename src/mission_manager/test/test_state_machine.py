@@ -116,6 +116,7 @@ class Backend:
 def system():
     config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml',
                          CONFIG / 'targets_sim.yaml', 'simulation')
+    config['mission']['confirm_end_qr'] = True
     clock, backend = Clock(), Backend()
     mission = Mission(config, backend, clock)
     return mission, backend, clock
@@ -217,13 +218,6 @@ def test_success_at_deadline_cannot_advance(system, state):
     assert mission.completed == []
 
 
-def test_qr_identity_does_not_replace_ready_to_lift(system):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'DOCK_ENTER')
-    backend.finish(details={'ready_to_lift': False})
-    mission.tick()
-    assert mission.state == 'STOPPING'
-    assert not any(kind == 'lift' for kind, *_ in backend.calls)
 
 
 def test_lift_failure_keeps_unknown_cargo(system):
@@ -362,24 +356,8 @@ def test_invalid_configuration_is_rejected(system, field, value):
         validate(config, 'simulation')
 
 
-def test_unexpected_lift_change_stops_loaded_navigation(system):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_END')
-    backend.is_cargo_consistent = False
-    backend.finish()
-    mission.tick()
-    assert mission.state == 'STOPPING' and mission.cargo == 'UNKNOWN'
-    assert not any(kind == 'lift' and not payload['up'] for kind, _, payload, _ in backend.calls)
 
 
-def test_unexpected_lift_change_blocks_empty_rack_navigation(system):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_RACK')
-    backend.is_cargo_consistent = False
-    backend.finish()
-    mission.tick()
-    assert mission.state == 'STOPPING'
-    assert not any(payload.get('operation') == 'ENTER' for _, _, payload, _ in backend.calls)
 
 
 def test_state_observer_failure_still_requests_stop(system):
@@ -554,30 +532,8 @@ def test_tick_rechecks_stop_deadline_after_slow_observer(system):
     assert mission.state == 'FAULT' and '停止未得到确认' in mission.reason
 
 
-@pytest.mark.parametrize('state', ['WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR'])
-def test_motion_while_waiting_for_qr_blocks_all_following_actions(system, state):
-    mission, backend, _clock = system
-    advance_to(mission, backend, state)
-    count = len(backend.calls)
-    backend.is_stationary = False
-    backend.finish()
-    mission.tick()
-    assert mission.state == 'STOPPING' and len(backend.calls) == count
-    assert mission.stop_plan[0] is None
 
 
-@pytest.mark.parametrize('next_state', ['DOCK_ENTER', 'LIFT_DOWN'])
-def test_motion_during_transition_blocks_docking_and_lowering(system, next_state):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'WAIT_RACK_QR' if next_state == 'DOCK_ENTER' else 'WAIT_END_QR')
-    count = len(backend.calls)
-    def observer(_previous, state, _reason):
-        if state == next_state:
-            backend.is_stationary = False
-    mission.on_transition = observer
-    backend.finish()
-    mission.tick()
-    assert mission.state == 'STOPPING' and len(backend.calls) == count
 
 
 def test_shutdown_during_fault_stop_preserves_original_fault(system):
@@ -594,36 +550,8 @@ def test_shutdown_during_fault_stop_preserves_original_fault(system):
     assert mission.state == 'FAULT' and mission.reason == '运输路径无法规划'
 
 
-@pytest.mark.parametrize('already_terminal', [False, True])
-def test_lift_change_during_or_after_stop_invalidates_cargo(system, already_terminal):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_END')
-    calls = len(backend.calls)
-    mission.manual_stop()
-    if already_terminal:
-        backend.confirm_stop()
-        mission.tick()
-        assert mission.state == 'STOPPED'
-    backend.is_up = False
-    backend.is_healthy = False
-    mission.tick()
-    assert mission.cargo == 'UNKNOWN' and mission.state == 'STOPPING'
-    backend.confirm_stop()
-    mission.tick()
-    assert mission.state == 'FAULT' and len(backend.calls) == calls
 
 
-def test_lift_change_during_retry_stop_cancels_retry(system):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_RACK')
-    backend.finish(False)
-    mission.tick()
-    assert mission.stop_plan[0] == 'NAV_RACK'
-    backend.is_up = True
-    backend.confirm_stop()
-    mission.tick()
-    assert mission.state == 'FAULT' and mission.cargo == 'UNKNOWN'
-    assert len(backend.calls) == 2
 
 
 @pytest.mark.parametrize('key,other', [
@@ -693,38 +621,8 @@ def test_shutdown_does_not_repeat_already_confirmed_stop(system):
     assert len(backend.stops) == 1 and mission.state == 'STOPPED'
 
 
-@pytest.mark.parametrize('terminal', ['FINISHED', 'STOPPED', 'FAULT'])
-def test_terminal_motion_is_stopped_without_resuming_tasks(system, terminal):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_END')
-    mission.stopping('原结束原因', terminal=terminal)
-    backend.confirm_stop()
-    mission.tick()
-    calls = len(backend.calls)
-    backend.is_stationary = False
-    mission.tick()
-    assert mission.state == 'STOPPING' and len(backend.stops) == 2
-    assert mission.status()['stop']['status'] == 'PENDING'
-    backend.is_stationary = True
-    backend.confirm_stop()
-    mission.tick()
-    assert mission.state == 'FAULT' and mission.stop_status == 'CONFIRMED'
-    assert len(backend.calls) == calls and '原结束原因' in mission.reason
 
 
-def test_terminal_motion_stop_failure_does_not_loop_forever(system):
-    mission, backend, _clock = system
-    advance_to(mission, backend, 'NAV_END')
-    mission.manual_stop()
-    backend.confirm_stop()
-    mission.tick()
-    backend.is_stationary = False
-    mission.tick()
-    backend.confirm_stop(False)
-    mission.tick()
-    for _ in range(20):
-        mission.tick()
-    assert len(backend.stops) == 2 and mission.stop_status == 'FAILED'
 
 
 def test_repeated_stop_reports_new_confirmation_separately_from_old_fault(system):
@@ -744,3 +642,47 @@ def test_repeated_stop_reports_new_confirmation_separately_from_old_fault(system
     assert status['stop']['status'] == 'CONFIRMED'
     assert status['stop']['request_id'] != original_request
     assert '本次' in status['stop']['reason']
+
+
+def test_default_navigation_arrival_directly_starts_lowering():
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml', CONFIG / 'targets_sim.yaml', 'simulation')
+    assert config['mission']['confirm_end_qr'] is False
+    backend = Backend()
+    mission = Mission(config, backend, Clock())
+    advance_to(mission, backend, 'NAV_END')
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'LIFT_DOWN'
+    assert not any(item['to'] == 'WAIT_END_QR' for item in mission.history)
+
+
+def test_module_success_is_enough_without_auxiliary_confirmation(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'DOCK_ENTER')
+    backend.is_stationary = False
+    backend.is_cargo_consistent = False
+    backend.finish(details={})
+    mission.tick()
+    assert mission.state == 'LIFT_UP'
+    backend.finish(details={'is_up': True})
+    mission.tick()
+    assert mission.state == 'NAV_END' and mission.cargo == 'UP'
+
+
+def test_stop_reply_is_enough_without_auxiliary_confirmation(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    mission.manual_stop()
+    backend.is_stationary = False
+    backend.is_cargo_consistent = False
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'STOPPED' and mission.stop_status == 'CONFIRMED'
+
+
+def test_exit_success_records_completion_without_extra_flag(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'DOCK_EXIT')
+    backend.finish(details={})
+    mission.tick()
+    assert mission.completed == ['A'] and mission.rack == 'B'

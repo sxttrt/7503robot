@@ -1,7 +1,6 @@
 """不依赖 ROS 的任务状态机，集中管理固定顺序、超时和货物状态。
 
-后端负责通信及状态读取，提供 start、cancel、stop、poll、ready、healthy、
-stationary、cargo_observation、cargo_matches 方法。
+后端负责通信，提供 start、cancel、stop、poll、ready、healthy 方法。完成结果来自执行模块，不再读取额外的静止或升降到位确认。
 所有完成回调只进入事件队列，统一在 tick 中处理，防止同步回调导致状态重入。
 """
 
@@ -13,7 +12,6 @@ import uuid
 FINAL_STATES = {'FINISHED', 'FAULT', 'STOPPED'}
 ACTION_STATES = {'NAV_RACK', 'WAIT_RACK_QR', 'DOCK_ENTER', 'LIFT_UP',
                  'NAV_END', 'WAIT_END_QR', 'LIFT_DOWN', 'DOCK_EXIT', 'WAIT_START'}
-STATIONARY_STATES = {'WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR'}
 
 
 class Mission:
@@ -115,15 +113,6 @@ class Mission:
                 self.active_request = self.active_kind = None
                 self.stopping('发起动作前模块健康检查失败')
                 return
-            if not self.backend.stationary():
-                self.active_request = self.active_kind = None
-                self.stopping('发起动作前尚未确认静止，禁止交接控制权')
-                return
-            if self.cargo != 'UNKNOWN' and not self.backend.cargo_matches(self.cargo):
-                self.cargo = 'UNKNOWN'
-                self.active_request = self.active_kind = None
-                self.stopping('发起动作前升降状态与携货记录不一致')
-                return
         except Exception as exc:
             self.active_request = self.active_kind = None
             self.fail_safe(f'发起动作前状态检查异常：{exc}')
@@ -171,7 +160,7 @@ class Mission:
         self.stop_request = uuid.uuid4().hex
         self.last_stop_request = self.stop_request
         self.stop_status = 'PENDING'
-        self.stop_result_reason = '等待停止响应、新鲜静止状态和旧动作结束'
+        self.stop_result_reason = '等待执行模块返回停止完成结果'
         self.deadline = self.clock() + self.policy['stop_timeout_sec']
         request = self.stop_request
 
@@ -214,7 +203,7 @@ class Mission:
         """
         if self.state in FINAL_STATES:
             try:
-                confirmed = self.stop_status == 'CONFIRMED' and self.backend.stationary()
+                confirmed = self.stop_status == 'CONFIRMED'
             except Exception:
                 confirmed = False
             if not confirmed:
@@ -222,42 +211,7 @@ class Mission:
         else:
             self.manual_stop()
 
-    def check_terminal_safety(self):
-        """结束后继续监督已确认的静止；异常只触发一次新的停止握手。
 
-        新握手失败或超时后保留未确认结果，不在每个 tick 无限重发停止。
-        """
-        if self.state not in FINAL_STATES or self.stop_status != 'CONFIRMED':
-            return
-        if not self.backend.stationary():
-            reason = '任务结束后检测到运动或静止反馈失效，重新停止并等待人工检查'
-            if self.reason:
-                reason = self.reason + '；' + reason
-            self.stopping(reason)
-
-    def check_cargo_observation(self):
-        """即使停机中或已结束，也不能把机构变化后的旧携货记录当作已确认。
-
-        只使用新鲜且来源符合配置的升降观察；没有有效观察时保留最后记录。
-        UNKNOWN 必须等原升降动作明确完成或人工检查，不能靠一个采样自动恢复。
-        """
-        if self.cargo == 'UNKNOWN' or self.state == 'IDLE':
-            return
-        observed = self.backend.cargo_observation()
-        if observed is None or observed == self.cargo:
-            return
-        self.cargo = 'UNKNOWN'
-        reason = '升降实际状态与携货记录不一致，停止并等待人工检查'
-        if self.state == 'STOPPING':
-            previous_reason = self.stop_plan[2]
-            reason = previous_reason + '；' + reason if previous_reason else reason
-            self.stop_plan = (None, 'FAULT', reason)
-            # 原停止请求继续生效，禁止重置截止时间或继续之前的重试。
-            self.transition('STOPPING', reason)
-        else:
-            if self.state in FINAL_STATES and self.reason:
-                reason = self.reason + '；' + reason
-            self.stopping(reason)
 
     def fail_safe(self, reason):
         """异常必须撤销重试；已经停止中的异常不得重置停止截止时间。"""
@@ -278,7 +232,7 @@ class Mission:
         self.stopping(reason, target=target)
 
     def success(self, details):
-        """各阶段校验完成条件；二维码身份不等价于可托举。"""
+        """按照模块完成结果推进阶段；进入成功由对准模块保证可托举。"""
         state = self.state
         self.active_request = self.active_kind = None
         if state == 'WAIT_START':
@@ -289,10 +243,8 @@ class Mission:
         elif state == 'WAIT_RACK_QR':
             self.enter('DOCK_ENTER')
         elif state == 'DOCK_ENTER':
-            if details.get('ready_to_lift') is not True:
-                self.failed('对准模块未明确确认可托举')
-            else:
-                self.enter('LIFT_UP')
+            # 对准模块成功即表示已进入并可托举，不再要求第二个确认标志。
+            self.enter('LIFT_UP')
         elif state in ('LIFT_UP', 'LIFT_DOWN'):
             expected = state == 'LIFT_UP'
             if details.get('is_up') is not expected:
@@ -310,15 +262,13 @@ class Mission:
         elif state == 'WAIT_END_QR':
             self.enter('LIFT_DOWN')
         elif state == 'DOCK_EXIT':
-            if details.get('exited') is not True:
-                self.failed('退出模块未明确确认已脱离货架')
+            # 退出模块成功即表示已脱离货架。
+            self.completed.append(self.rack)
+            self.index += 1
+            if self.rack is None:
+                self.stopping('A、B、C、D 全部完成', terminal='FINISHED')
             else:
-                self.completed.append(self.rack)
-                self.index += 1
-                if self.rack is None:
-                    self.stopping('A、B、C、D 全部完成', terminal='FINISHED')
-                else:
-                    self.enter('NAV_RACK')
+                self.enter('NAV_RACK')
 
     def tick(self):
         """定期处理事件和截止时间；每次调用都不等待外部动作结束。"""
@@ -327,11 +277,6 @@ class Mission:
         except Exception as exc:
             self.fail_safe(f'接口轮询异常：{exc}')
         now = self.clock()
-        try:
-            self.check_cargo_observation()
-            self.check_terminal_safety()
-        except Exception as exc:
-            self.fail_safe(f'升降观察检查异常：{exc}')
         if self.state in FINAL_STATES or self.state == 'IDLE':
             self.events.clear()
             return
@@ -349,10 +294,8 @@ class Mission:
             try:
                 if not self.backend.healthy():
                     self.stopping('必需模块断联、状态过期或报告故障')
-                elif self.state in STATIONARY_STATES and not self.backend.stationary():
-                    self.stopping('等待二维码期间检测到未静止，禁止进入下一动作')
             except Exception as exc:
-                self.fail_safe(f'健康或升降状态检查异常：{exc}')
+                self.fail_safe(f'在线反馈检查异常：{exc}')
         # 截止时间先于结果处理，截止之后的成功不能继续推进流程。
         # 上面的停机记录或观察回调可能耗时，不能继续使用进入 tick 时的旧时间。
         now = self.clock()
@@ -379,11 +322,11 @@ class Mission:
                     self.transition('FAULT', reason + '；停止失败：' + details.get('reason', '未说明原因'))
                 else:
                     self.stop_status = 'CONFIRMED'
-                    self.stop_result_reason = '本次停止响应、新鲜静止状态及旧动作结束均已确认'
+                    self.stop_result_reason = '执行模块已返回本次停止成功'
                 if ok and target:
-                    # 静止已确认仍不等于可以恢复；有故障或机构状态变化时禁止重试。
-                    if not self.backend.healthy() or not self.backend.cargo_matches(self.cargo):
-                        self.transition('FAULT', '停止已确认，但模块或升降状态不满足重试条件')
+                    # 停止成功后，执行模块未就绪或仍报故障时不重试。
+                    if not self.backend.healthy():
+                        self.transition('FAULT', '停止完成，但执行模块未就绪，不进行重试')
                     else:
                         self.enter(target, retry=True)
                 elif ok:
