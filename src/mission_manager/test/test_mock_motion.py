@@ -16,6 +16,8 @@ def test_mock_lift_is_moving_until_every_exit_path_finishes(monkeypatch, outcome
     mock.lock = threading.RLock()
     mock.stop_epoch = mock.motion_count = 0
     mock.is_up = False
+    mock.lift_safety_token = 'token0'
+    mock.seen_lift_requests = set()
     mock.counts = {}
     mock.status = {'state': 'LIFT_UP', 'rack': 'A'}
     mock.mission_active_at = None
@@ -46,10 +48,50 @@ def test_mock_lift_is_moving_until_every_exit_path_finishes(monkeypatch, outcome
     monkeypatch.setattr('mission_manager.mock_modules.time.sleep', pause)
     if outcome == 'exception':
         with pytest.raises(RuntimeError, match='模拟等待异常'):
-            mock.lift(SimpleNamespace(data=True), SimpleNamespace())
+            mock.lift(SimpleNamespace(up=True, request_id='r1', safety_token='token0'), SimpleNamespace())
     else:
-        response = mock.lift(SimpleNamespace(data=True), SimpleNamespace())
+        response = mock.lift(SimpleNamespace(up=True, request_id='r1', safety_token='token0'), SimpleNamespace())
         assert response.success is (outcome == 'success')
     assert mock.motion_count == 0 and mock.is_up is (outcome == 'success')
     mock.publish_observations()
     assert observations[-1]['stopped'] is True
+
+
+def token_mock():
+    """只构造升降和停止处理器，令牌与真实服务端使用同一套校验。"""
+    mock = MockModules.__new__(MockModules)
+    mock.lock = threading.RLock()
+    mock.stop_epoch = mock.motion_count = 0
+    mock.lift_safety_token = 'token0'
+    mock.seen_lift_requests = set()
+    mock.is_up = False
+    mock.counts = {}
+    mock.scenario = {'lift_duration_sec': 0.0}
+    return mock
+
+
+def test_old_lift_arriving_after_stop_cannot_move(monkeypatch):
+    mock = token_mock()
+    old_request = SimpleNamespace(request_id='old', up=True, safety_token=mock.lift_safety_token)
+    mock.stop(None, SimpleNamespace())
+    monkeypatch.setattr('mission_manager.mock_modules.rclpy.ok', lambda: True)
+    response = mock.lift(old_request, SimpleNamespace())
+    assert response.success is False and mock.is_up is False and mock.motion_count == 0
+
+
+def test_new_token_allows_later_legitimate_lift_but_not_duplicate(monkeypatch):
+    mock = token_mock()
+    mock.stop(None, SimpleNamespace())
+    monkeypatch.setattr('mission_manager.mock_modules.rclpy.ok', lambda: True)
+    request = SimpleNamespace(request_id='new', up=True, safety_token=mock.lift_safety_token)
+    assert mock.lift(request, SimpleNamespace()).success
+    assert not mock.lift(request, SimpleNamespace()).success
+    assert mock.counts['LIFT_UP'] == 1 and mock.is_up is True
+
+
+def test_controller_restart_also_rejects_previous_token(monkeypatch):
+    mock = token_mock()
+    mock.lift_safety_token = 'new_boot_token'
+    monkeypatch.setattr('mission_manager.mock_modules.rclpy.ok', lambda: True)
+    response = mock.lift(SimpleNamespace(request_id='old', up=True, safety_token='token0'), SimpleNamespace())
+    assert not response.success and not mock.is_up

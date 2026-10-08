@@ -3,6 +3,12 @@
 # failures 中的数字表示该状态前几次请求失败，而不是随机概率。
 scenarios:
   normal: {}
+  motion_after_finish:
+    # 正常完成之后又反馈运动；应再次停止，保留完成记录并进入故障。
+    motion_after_finish: true
+  late_lift_request:
+    # 联调测试将升降时限设为 1.5 秒，验证 2 秒后到达的旧请求被拒绝。
+    lift_dispatch_delay_sec: 2.0
   motion_during_end_qr:
     # 等待目标区扫码时仍在运动，禁止降下货架。
     motion_during_end_qr: true

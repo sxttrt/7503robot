@@ -1,0 +1,10 @@
+# 一次升降请求的唯一编号，原样返回结果；重复请求不得重复驱动机构。
+string request_id
+# 从最新健康状态复制的安全令牌。停止及控制器重启后旧令牌立即失效。
+string safety_token
+# true 升起，false 放下；成功响应必须表示动作实际完成。
+bool up
+---
+string request_id
+bool success
+string message

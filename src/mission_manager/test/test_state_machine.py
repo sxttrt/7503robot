@@ -645,3 +645,102 @@ def test_physical_stop_cannot_call_mission_control_itself(system, reserved):
     config['interfaces']['stop_service'] = reserved
     with pytest.raises(ValueError, match='调用自身'):
         validate(config, 'simulation')
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure', 'timeout'])
+def test_main_shutdown_retries_unconfirmed_stop_once(system, monkeypatch, outcome):
+    """直接执行退出入口；失败后的补发有界，不能在退出循环无限重发。"""
+    from types import SimpleNamespace
+    import mission_manager.mission_node as module
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.manual_stop()
+    backend.confirm_stop(False)
+    mission.tick()
+    node = SimpleNamespace(mission=mission, closing=False, config=mission.config,
+        publish_status=lambda: None, destroy_node=lambda: None,
+        log_stream=SimpleNamespace(close=lambda: None))
+    running = SimpleNamespace(value=True)
+    def spin_once(_node, timeout_sec):
+        if not node.closing:
+            node.closing = True
+        else:
+            mission.manual_stop()
+            if outcome == 'timeout':
+                clock.now = mission.deadline
+            else:
+                backend.confirm_stop(outcome == 'success')
+            mission.tick()
+    monkeypatch.setattr(module, 'MissionNode', lambda: node)
+    monkeypatch.setattr(module.rclpy, 'init', lambda **_kwargs: None)
+    monkeypatch.setattr(module.rclpy, 'ok', lambda: running.value)
+    monkeypatch.setattr(module.rclpy, 'spin_once', spin_once)
+    monkeypatch.setattr(module.rclpy, 'shutdown', lambda: setattr(running, 'value', False))
+    monkeypatch.setattr(module.signal, 'signal', lambda *_args: None)
+    module.main()
+    assert len(backend.stops) == 2 and mission.state == 'FAULT'
+    assert mission.status()['stop']['status'] == {
+        'success': 'CONFIRMED', 'failure': 'FAILED', 'timeout': 'TIMED_OUT'}[outcome]
+
+
+def test_shutdown_does_not_repeat_already_confirmed_stop(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.manual_stop()
+    backend.confirm_stop()
+    mission.tick()
+    mission.prepare_shutdown()
+    assert len(backend.stops) == 1 and mission.state == 'STOPPED'
+
+
+@pytest.mark.parametrize('terminal', ['FINISHED', 'STOPPED', 'FAULT'])
+def test_terminal_motion_is_stopped_without_resuming_tasks(system, terminal):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.stopping('原结束原因', terminal=terminal)
+    backend.confirm_stop()
+    mission.tick()
+    calls = len(backend.calls)
+    backend.is_stationary = False
+    mission.tick()
+    assert mission.state == 'STOPPING' and len(backend.stops) == 2
+    assert mission.status()['stop']['status'] == 'PENDING'
+    backend.is_stationary = True
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and mission.stop_status == 'CONFIRMED'
+    assert len(backend.calls) == calls and '原结束原因' in mission.reason
+
+
+def test_terminal_motion_stop_failure_does_not_loop_forever(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.manual_stop()
+    backend.confirm_stop()
+    mission.tick()
+    backend.is_stationary = False
+    mission.tick()
+    backend.confirm_stop(False)
+    mission.tick()
+    for _ in range(20):
+        mission.tick()
+    assert len(backend.stops) == 2 and mission.stop_status == 'FAILED'
+
+
+def test_repeated_stop_reports_new_confirmation_separately_from_old_fault(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.manual_stop()
+    backend.confirm_stop(False)
+    mission.tick()
+    original_reason = mission.reason
+    original_request = mission.status()['stop']['request_id']
+    mission.manual_stop(reissue=True)
+    assert mission.status()['stop']['status'] == 'PENDING'
+    backend.confirm_stop()
+    mission.tick()
+    status = mission.status()
+    assert status['state'] == 'FAULT' and status['reason'] == original_reason
+    assert status['stop']['status'] == 'CONFIRMED'
+    assert status['stop']['request_id'] != original_request
+    assert '本次' in status['stop']['reason']

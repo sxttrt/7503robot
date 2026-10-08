@@ -165,7 +165,7 @@ def main(args=None):
     finally:
         if node is not None:
             node.closing = True
-            node.mission.manual_stop()
+            node.mission.prepare_shutdown()
             until = time.monotonic() + node.config['mission']['stop_timeout_sec'] + 0.5
             while rclpy.ok() and node.mission.state not in FINAL_STATES and time.monotonic() < until:
                 try:

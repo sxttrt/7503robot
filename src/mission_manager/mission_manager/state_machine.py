@@ -42,6 +42,10 @@ class Mission:
         self.events = deque()
         self.history = []
         self.fatal_error = ''
+        # 最新停止请求的结果独立于任务结束原因，故障保留时仍能看清是否停稳。
+        self.stop_status = 'NOT_REQUESTED'
+        self.stop_result_reason = ''
+        self.last_stop_request = None
 
     @property
     def rack(self):
@@ -165,6 +169,9 @@ class Mission:
         self.invalidate_action()
         self.stop_plan = (target, terminal, reason)
         self.stop_request = uuid.uuid4().hex
+        self.last_stop_request = self.stop_request
+        self.stop_status = 'PENDING'
+        self.stop_result_reason = '等待停止响应、新鲜静止状态和旧动作结束'
         self.deadline = self.clock() + self.policy['stop_timeout_sec']
         request = self.stop_request
 
@@ -199,6 +206,34 @@ class Mission:
         elif self.state not in FINAL_STATES:
             self.stopping('操作员要求停止', terminal='STOPPED')
             return True, '已请求停止；响应不表示已静止，请观察任务状态'
+
+    def prepare_shutdown(self):
+        """退出入口只执行一次；未确认停止时再做一次有时限的停止尝试。
+
+        定时器仍调用幂等的 manual_stop，不重置截止时间，也不会恢复任何任务。
+        """
+        if self.state in FINAL_STATES:
+            try:
+                confirmed = self.stop_status == 'CONFIRMED' and self.backend.stationary()
+            except Exception:
+                confirmed = False
+            if not confirmed:
+                self.manual_stop(reissue=True)
+        else:
+            self.manual_stop()
+
+    def check_terminal_safety(self):
+        """结束后继续监督已确认的静止；异常只触发一次新的停止握手。
+
+        新握手失败或超时后保留未确认结果，不在每个 tick 无限重发停止。
+        """
+        if self.state not in FINAL_STATES or self.stop_status != 'CONFIRMED':
+            return
+        if not self.backend.stationary():
+            reason = '任务结束后检测到运动或静止反馈失效，重新停止并等待人工检查'
+            if self.reason:
+                reason = self.reason + '；' + reason
+            self.stopping(reason)
 
     def check_cargo_observation(self):
         """即使停机中或已结束，也不能把机构变化后的旧携货记录当作已确认。
@@ -294,6 +329,7 @@ class Mission:
         now = self.clock()
         try:
             self.check_cargo_observation()
+            self.check_terminal_safety()
         except Exception as exc:
             self.fail_safe(f'升降观察检查异常：{exc}')
         if self.state in FINAL_STATES or self.state == 'IDLE':
@@ -323,6 +359,8 @@ class Mission:
         if self.deadline is not None and now >= self.deadline:
             if self.state == 'STOPPING':
                 self.stop_request = None
+                self.stop_status = 'TIMED_OUT'
+                self.stop_result_reason = '停止未在时限内得到确认，请人工检查'
                 self.transition('FAULT', self.stop_plan[2] + '；停止未得到确认，请人工检查；自动流程已终止')
             elif self.state == 'WAIT_START':
                 # START 尚未出现时不启动比赛，只报告等待超时并重新观察。
@@ -336,14 +374,19 @@ class Mission:
                 self.stop_request = None
                 target, terminal, reason = self.stop_plan
                 if not ok:
+                    self.stop_status = 'FAILED'
+                    self.stop_result_reason = details.get('reason', '停止服务未说明失败原因')
                     self.transition('FAULT', reason + '；停止失败：' + details.get('reason', '未说明原因'))
-                elif target:
+                else:
+                    self.stop_status = 'CONFIRMED'
+                    self.stop_result_reason = '本次停止响应、新鲜静止状态及旧动作结束均已确认'
+                if ok and target:
                     # 静止已确认仍不等于可以恢复；有故障或机构状态变化时禁止重试。
                     if not self.backend.healthy() or not self.backend.cargo_matches(self.cargo):
                         self.transition('FAULT', '停止已确认，但模块或升降状态不满足重试条件')
                     else:
                         self.enter(target, retry=True)
-                else:
+                elif ok:
                     self.transition(terminal, reason)
             elif self.state in ACTION_STATES and request == self.active_request:
                 if ok:
@@ -359,4 +402,6 @@ class Mission:
                 'cargo': self.cargo, 'completed': list(self.completed),
                 'delivered': list(self.delivered), 'remaining_sec': max(
                     0.0, self.policy['game_duration_sec'] - elapsed),
-                'attempt': self.attempts.get(self.state, 0), 'reason': self.reason}
+                'attempt': self.attempts.get(self.state, 0), 'reason': self.reason,
+                'stop': {'status': self.stop_status, 'request_id': self.last_stop_request,
+                         'reason': self.stop_result_reason}}

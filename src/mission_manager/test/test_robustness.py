@@ -127,9 +127,10 @@ def health_reader(monkeypatch):
     reader.diagnostic = ''
     monotonic = SimpleNamespace(now=100.0)
     monkeypatch.setattr('mission_manager.adapters.safety.time.monotonic', lambda: monotonic.now)
-    data = {'schema_version': 1, 'stamp': {'sec': 10, 'nanosec': 0},
+    data = {'schema_version': 2, 'stamp': {'sec': 10, 'nanosec': 0},
             'modules': {name: True for name in ('navigation', 'qr', 'docking', 'lift', 'base')},
-            'stopped': True, 'lift_is_up': False, 'lift_state_source': 'measured', 'fault': ''}
+            'stopped': True, 'lift_is_up': False, 'lift_state_source': 'measured',
+            'lift_safety_token': 'token0', 'fault': ''}
     return reader, data, clock, monotonic
 
 
@@ -187,10 +188,12 @@ def lift_reader():
     lift.policy = {'allow_estimated_lift': False}
     outcomes = []
     lift.requests = {'r1': {'up': True, 'cancelled': False, 'begin_ns': clock.ns - 1,
+                           'safety_token': 'token0',
                            'callback': lambda *args: outcomes.append(args)}}
     lift.pending_results = {}
     lift.safety = SimpleNamespace(healthy=lambda: True, stamp_ns=clock.ns,
                                  latest={'lift_is_up': True, 'lift_state_source': 'measured',
+                                         'lift_safety_token': 'token0',
                                          'stopped': True})
     return lift, outcomes, clock
 
@@ -215,7 +218,7 @@ def test_lift_send_exception_cannot_allow_overlapping_retry():
 
 def test_lift_confirmation_requires_new_status_after_response():
     lift, outcomes, clock = lift_reader()
-    lift.result('r1', Future(SimpleNamespace(success=True, message='完成')))
+    lift.result('r1', Future(SimpleNamespace(request_id='r1', success=True, message='完成')))
     lift.poll()
     assert not outcomes
     lift.safety.stamp_ns = clock.ns + 1
@@ -226,7 +229,7 @@ def test_lift_confirmation_requires_new_status_after_response():
 def test_cancelled_lift_response_cannot_complete_old_task():
     lift, outcomes, _clock = lift_reader()
     lift.cancel('r1')
-    lift.result('r1', Future(SimpleNamespace(success=True, message='迟到完成')))
+    lift.result('r1', Future(SimpleNamespace(request_id='r1', success=True, message='迟到完成')))
     lift.poll()
     assert lift.idle() and not outcomes
 
@@ -242,7 +245,7 @@ def test_qr_large_frame_gap_restarts_consecutive_confirmation():
 
 def test_lift_success_waits_until_all_motion_has_stopped():
     lift, outcomes, clock = lift_reader()
-    lift.result('r1', Future(SimpleNamespace(success=True, message='完成')))
+    lift.result('r1', Future(SimpleNamespace(request_id='r1', success=True, message='完成')))
     lift.safety.stamp_ns = clock.ns + 1
     lift.safety.latest['stopped'] = False
     lift.poll()
@@ -269,3 +272,41 @@ def test_disallowed_estimated_cargo_is_not_used_as_observation(monkeypatch):
     assert reader.lift_observation() is None
     reader.policy['allow_estimated_lift'] = True
     assert reader.lift_observation() == 'EMPTY'
+
+
+@pytest.mark.parametrize('token', [None, '', '   ', 123])
+def test_health_without_valid_lift_token_cannot_enable(monkeypatch, token):
+    reader, data, _clock, _monotonic = health_reader(monkeypatch)
+    data['lift_safety_token'] = token
+    reader.on_status(SimpleNamespace(data=json.dumps(data)))
+    assert not reader.healthy()
+
+
+def test_stop_confirmation_waits_for_new_controller_token(monkeypatch):
+    reader, data, clock, _monotonic = health_reader(monkeypatch)
+    reader.on_status(SimpleNamespace(data=json.dumps(data)))
+    outcomes = []
+    reader.pending = {'ack': True, 'begin_ns': clock.ns - 1, 'old_token': 'token0',
+                      'request': 's1', 'callback': lambda *args: outcomes.append(args)}
+    reader.poll(True)
+    assert not outcomes
+    data['stamp']['nanosec'] = 1
+    data['lift_safety_token'] = 'token1'
+    reader.on_status(SimpleNamespace(data=json.dumps(data)))
+    reader.poll(True)
+    assert outcomes[0][1] is True
+
+
+def test_wrong_lift_response_id_remains_unconfirmed():
+    lift, outcomes, _clock = lift_reader()
+    lift.result('r1', Future(SimpleNamespace(request_id='old', success=True, message='错误响应')))
+    assert not lift.idle() and outcomes[0][1] is False
+
+
+def test_lift_completion_with_changed_token_cannot_advance():
+    lift, outcomes, clock = lift_reader()
+    lift.result('r1', Future(SimpleNamespace(request_id='r1', success=True, message='完成')))
+    lift.safety.stamp_ns = clock.ns + 1
+    lift.safety.latest['lift_safety_token'] = 'token1'
+    lift.poll()
+    assert outcomes[0][1] is False and not lift.pending_results

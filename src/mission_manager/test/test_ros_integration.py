@@ -47,6 +47,9 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
     ('lift_drop_during_stop', 'FAULT'),
     ('operator_retries_stop_after_fault', 'FAULT'),
     ('shutdown_during_fault_stop', 'FAULT'),
+    ('shutdown_after_unconfirmed_stop', 'FAULT'),
+    ('motion_after_finish', 'FAULT'),
+    ('late_lift_request', 'FAULT'),
 ])
 def test_real_ros_execution(tmp_path, scenario, expected):
     """通过订阅公开任务状态判断结果，不直接调用状态机的成功函数。"""
@@ -74,6 +77,8 @@ def test_real_ros_execution(tmp_path, scenario, expected):
         selected = 'stop_fail_once'
     if scenario == 'shutdown_during_fault_stop':
         selected = 'delivery_navigation_failure'
+    if scenario == 'shutdown_after_unconfirmed_stop':
+        selected = 'stop_fail_once'
     command = ['ros2', 'launch', 'robot_bringup', 'simulation.launch.py',
                f'scenario:={selected}', f'mission_file:={file}',
                f'namespace:={namespace}', f'domain_id:={domain}', 'auto_arm:=false']
@@ -84,8 +89,11 @@ def test_real_ros_execution(tmp_path, scenario, expected):
     rclpy.init(domain_id=domain, signal_handler_options=SignalHandlerOptions.NO)
     observer = Node('integration_observer')
     states = []
+    health_states = []
     observer.create_subscription(String, f'/{namespace}/mission/status',
                                   lambda message: states.append(json.loads(message.data)), 10)
+    observer.create_subscription(String, f'/{namespace}/robot/status',
+                                  lambda message: health_states.append(json.loads(message.data)), 10)
     stop_client = observer.create_client(Trigger, f'/{namespace}/mission/stop')
     arm_client = observer.create_client(Trigger, f'/{namespace}/mission/arm')
     requested_arm = False
@@ -122,6 +130,17 @@ def test_real_ros_execution(tmp_path, scenario, expected):
                 assert match, '未找到本测试主程序的进程编号'
                 os.kill(int(match.group(1)), signal.SIGTERM)
                 requested_stop = True
+            if scenario == 'shutdown_after_unconfirmed_stop' and states:
+                if states[-1]['state'] == 'FAULT' and not requested_stop:
+                    assert states[-1]['stop']['status'] == 'FAILED'
+                    match = re.search(r'\[mission_node-\d+\]: process started with pid \[(\d+)\]',
+                                      log_file.read_text(encoding='utf-8'))
+                    assert match, '未找到本测试主程序的进程编号'
+                    os.kill(int(match.group(1)), signal.SIGTERM)
+                    requested_stop = True
+                    continue
+                if not requested_stop or states[-1]['stop']['status'] != 'CONFIRMED':
+                    continue
             if scenario == 'operator_retries_stop_after_fault' and states:
                 if states[-1]['state'] == 'FAULT' and not requested_stop:
                     original_fault = states[-1]['reason']
@@ -132,6 +151,8 @@ def test_real_ros_execution(tmp_path, scenario, expected):
                     repeated_stop_seen = True
                 if not repeated_stop_seen:
                     continue
+            if scenario == 'motion_after_finish' and states and states[-1]['state'] == 'FINISHED':
+                continue
             if states and states[-1]['state'] in ('FINISHED', 'FAULT', 'STOPPED'):
                 break
         assert states and states[-1]['state'] == expected, (states[-1:] or '无状态')
@@ -139,6 +160,13 @@ def test_real_ros_execution(tmp_path, scenario, expected):
         if scenario == 'operator_retries_stop_after_fault':
             assert repeated_stop_seen and repeat_response.done() and repeat_response.result().success
             assert final['reason'] == original_fault
+            assert final['stop']['status'] == 'CONFIRMED'
+        if scenario == 'shutdown_after_unconfirmed_stop':
+            assert requested_stop and final['stop']['status'] == 'CONFIRMED'
+        if scenario == 'late_lift_request':
+            assert health_states and not any(data['lift_is_up'] for data in health_states)
+            assert final['cargo'] == 'UNKNOWN' and final['stop']['status'] == 'CONFIRMED'
+            assert not any(state['state'] == 'NAV_END' for state in states)
         if scenario == 'shutdown_during_fault_stop':
             assert requested_stop and '模拟导航失败' in final['reason']
         if scenario in ('motion_during_end_qr', 'lift_drop_during_stop'):
@@ -153,7 +181,7 @@ def test_real_ros_execution(tmp_path, scenario, expected):
             assert final['cargo'] == 'UP'
             assert '停止未得到确认' not in final['reason']
             assert not any(state['state'] == 'LIFT_DOWN' for state in states)
-        if scenario in ('normal', 'navigation_fail_once'):
+        if scenario in ('normal', 'navigation_fail_once', 'motion_after_finish'):
             assert final['completed'] == final['delivered'] == ['A', 'B', 'C', 'D']
             racks = []
             for state in states:
@@ -170,7 +198,7 @@ def test_real_ros_execution(tmp_path, scenario, expected):
         if scenario == 'exit_failure':
             assert final['delivered'] == ['A'] and final['cargo'] == 'EMPTY'
         # 导航失败次数耗尽不能跳过 A 开始 B。
-        if scenario not in ('normal', 'navigation_fail_once'):
+        if scenario not in ('normal', 'navigation_fail_once', 'motion_after_finish'):
             assert not any(state['rack'] == 'B' for state in states)
     finally:
         if process.poll() is None:

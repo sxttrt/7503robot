@@ -1,15 +1,15 @@
-"""升降服务适配；第一版严格要求服务响应表示动作已经完成。"""
+"""升降服务适配：携带编号与安全令牌，成功响应必须表示动作实际完成。"""
 
 import time
 
 from std_msgs.msg import Bool
-from std_srvs.srv import SetBool
+from mission_interfaces.srv import SetLift
 
 
 class Lift:
     def __init__(self, node, interfaces, policy, safety):
         self.node, self.policy, self.safety = node, policy, safety
-        self.client = node.create_client(SetBool, interfaces['lift_service'])
+        self.client = node.create_client(SetLift, interfaces['lift_service'])
         self.subscription = node.create_subscription(Bool, interfaces['lift_state_topic'], self.on_state, 10)
         self.requests = {}
         self.pending_results = {}
@@ -32,11 +32,17 @@ class Lift:
         if not self.available():
             callback(request, False, {'reason': '升降服务未就绪'})
             return
+        if not self.safety.healthy():
+            callback(request, False, {'reason': '升降请求缺少有效健康状态和当前安全令牌'})
+            return
         info = {'up': bool(payload['up']), 'callback': callback, 'cancelled': False,
+                'safety_token': self.safety.latest['lift_safety_token'],
                 'begin_ns': self.node.get_clock().now().nanoseconds}
         self.requests[request] = info
-        message = SetBool.Request()
-        message.data = info['up']
+        message = SetLift.Request()
+        message.request_id = request
+        message.safety_token = self.safety.latest['lift_safety_token']
+        message.up = info['up']
         try:
             self.client.call_async(message).add_done_callback(lambda result: self.result(request, result))
         except Exception as exc:
@@ -52,6 +58,8 @@ class Lift:
             result = future.result()
             if type(getattr(result, 'success', None)) is not bool:
                 raise ValueError('升降响应缺少合法完成字段')
+            if getattr(result, 'request_id', None) != request:
+                raise ValueError('升降响应的请求编号不匹配，旧请求执行状态仍未确认')
         except Exception as exc:
             # 响应传输异常不能证明机构动作已经终止，仍阻止停止握手提前通过。
             if not info['cancelled'] and not info.get('reported'):
@@ -76,6 +84,10 @@ class Lift:
             return
         data = self.safety.latest
         for request, info in list(self.pending_results.items()):
+            if data['lift_safety_token'] != info['safety_token']:
+                self.pending_results.pop(request)
+                info['callback'](request, False, {'reason': '升降期间安全令牌已失效，禁止推进流程'})
+                continue
             if (self.safety.stamp_ns <= info['begin_ns'] or
                     data.get('lift_is_up') is not info['up'] or data.get('stopped') is not True):
                 continue
@@ -90,7 +102,7 @@ class Lift:
             })
 
     def cancel(self, request):
-        # 服务不能强行取消；停止确认还会等待旧服务回调结束。
+        # 服务不能强行撤回；停止接口使旧令牌失效，仍需等旧服务回调结束。
         info = self.requests.get(request)
         if info:
             info['cancelled'] = True

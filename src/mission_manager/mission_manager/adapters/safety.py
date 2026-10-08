@@ -41,10 +41,12 @@ class Safety:
                 return
             if not isinstance(data.get('modules'), dict) or type(data.get('stopped')) is not bool:
                 return
-            if (type(data.get('schema_version')) is not int or data['schema_version'] != 1 or
+            if (type(data.get('schema_version')) is not int or data['schema_version'] != 2 or
                     type(data.get('lift_is_up')) is not bool or
                     data.get('lift_state_source') not in ('measured', 'estimated') or
-                    not isinstance(data.get('fault'), str)):
+                    not isinstance(data.get('fault'), str) or
+                    not isinstance(data.get('lift_safety_token'), str) or
+                    not data['lift_safety_token'].strip()):
                 return
             if any(type(data['modules'].get(name)) is not bool
                    for name in ('navigation', 'qr', 'docking', 'lift', 'base')):
@@ -101,6 +103,7 @@ class Safety:
             callback(request, False, {'reason': '停止服务未就绪'})
             return
         pending = {'request': request, 'callback': callback, 'ack': False,
+                   'old_token': None if self.latest is None else self.latest['lift_safety_token'],
                    'begin_ns': self.node.get_clock().now().nanoseconds}
         self.pending = pending
         try:
@@ -130,6 +133,7 @@ class Safety:
             return
         # 必须有请求之后生成的新健康状态，不能用缓存的“已停止”。
         if (self.fresh() and self.stamp_ns > pending['begin_ns'] and
+                self.latest['lift_safety_token'] != pending.get('old_token') and
                 self.latest['stopped'] is True):
             self.pending = None
             pending['callback'](pending['request'], True, {'reason': '停止响应和新鲜静止状态均已确认'})
