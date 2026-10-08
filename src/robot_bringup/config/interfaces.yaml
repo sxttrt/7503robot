@@ -1,0 +1,16 @@
+# 所有名称都是相对名称，由启动文件统一加上命名空间。
+# 模拟默认在 /team2/sim 内；实机默认在 /team2/robot 内。
+# 队友使用其他名称时，可先修改这些名称或用 ROS 重映射；消息类型改变需改适配器。
+navigation_action: navigate_to_pose       # nav2_msgs/action/NavigateToPose
+qr_topic: qr/detections                  # std_msgs/msg/String，带图像时间戳的 JSON
+docking_action: docking/execute          # mission_interfaces/action/Dock，新接口提案
+lift_service: lift/set_up                # std_srvs/srv/SetBool，true 升、false 降
+lift_state_topic: lift/is_up             # std_msgs/msg/Bool，仅作参考状态
+health_topic: robot/status               # std_msgs/msg/String，健康状态 JSON，新接口提案
+stop_service: safety/stop                # std_srvs/srv/Trigger，新接口提案
+mission_status_topic: mission/status     # std_msgs/msg/String，任务状态 JSON
+
+# 第一版只支持响应代表“动作完成”的升降服务。
+# 只返回“收到命令”的队友程序不能直接接入，需改写服务端或扩展 lift.py。
+# 禁止把成功收到命令当作升降完成。
+lift_completion: response_means_completed

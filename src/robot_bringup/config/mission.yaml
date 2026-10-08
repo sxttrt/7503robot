@@ -1,0 +1,59 @@
+# 第二队任务配置。这里只配置任务策略，不包含导航、电机或视觉算法参数。
+team_number: 2
+
+# 用户已经明确：固定按 A、B、C、D 顺序，禁止自动排序或跳过失败货架。
+rack_order: [A, B, C, D]
+
+# 课程规定三分钟。只有确认 START 后开始计时，反复看到 START 不重置。
+game_duration_sec: 180.0
+
+# 主状态机调度周期，单位秒。小于最短超时，不进行阻塞式等待。
+tick_period_sec: 0.05
+
+# 停止服务响应、新鲜静止状态、旧动作结束都要在此时限内确认，单位秒。
+# 超时后进入故障状态，不自动重试，也不开始下一项运动。
+stop_timeout_sec: 5.0
+
+# 聚合健康状态最长允许断流时间，单位秒；正常发送频率建议至少 5 Hz。
+health_timeout_sec: 2.0
+
+# QR 必须来自最近的图像；单位秒。图像时钟与主节点 ROS 时钟必须一致。
+qr_max_age_sec: 1.0
+qr_future_tolerance_sec: 0.1
+
+# 不同图像帧中连续读到同一完整 QR 的次数。重复发布同一帧不增加次数。
+qr_confirm_frames: 3
+
+# 在目标区放货前再确认 END，是本工程建议策略，不是额外声称的课程硬规定。
+# 修改为 false 时，导航完成后直接进入放下，仍要求导航成功与升降完成反馈。
+confirm_end_qr: true
+
+# false：升降状态必须来自实际到位测量；true：允许明确标记的推定状态。
+# 模拟模块使用虚拟测量。实机无传感器时，必须先评估机构再决定是否改为 true。
+allow_estimated_lift: false
+
+# 各状态最长等待时间，单位秒。以下除总比赛时间外均为联调初值，实机需调整。
+# WAIT_START 超时会重新观察，不启动计时；其他步骤按重试规则或故障停机处理。
+timeouts:
+  WAIT_START: 60.0
+  NAV_RACK: 30.0
+  WAIT_RACK_QR: 5.0
+  DOCK_ENTER: 12.0
+  LIFT_UP: 6.0
+  NAV_END: 30.0
+  WAIT_END_QR: 5.0
+  LIFT_DOWN: 6.0
+  DOCK_EXIT: 8.0
+
+# 数字表示首次失败后允许的额外重试次数；2 表示总共最多三次。
+# 仅空载货架导航和 QR 等待允许自动重试，每次先确认停止。
+# 对准、升降、携货导航和退出默认不自动重试，以免状态不明时继续动作。
+retries:
+  NAV_RACK: 1
+  WAIT_RACK_QR: 2
+  WAIT_END_QR: 1
+  DOCK_ENTER: 0
+  LIFT_UP: 0
+  NAV_END: 0
+  LIFT_DOWN: 0
+  DOCK_EXIT: 0

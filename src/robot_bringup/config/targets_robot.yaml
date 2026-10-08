@@ -1,0 +1,20 @@
+# 第二队实机配置。暂不知道完整 QR，故保留 null，禁止猜测后缀。
+# 坐标由导航模块实测提供。全部补齐之前，实机启动将清楚报出缺失字段并退出。
+simulation_only: false
+frame_id: map
+
+# 目标区实际放货位姿，依次为 x（米）、y（米）、yaw（弧度）。
+destination_pose: null
+racks:
+  A:
+    qr: null                 # 填第二队货架 A 的完整 RACKA_XXXX 字符串
+    approach_pose: null      # 填货架附近便于观察 QR 的地图位姿，不是直接撞入货架
+  B:
+    qr: null                 # 填第二队货架 B 的完整 RACKB_XXXX 字符串
+    approach_pose: null
+  C:
+    qr: null                 # 填第二队货架 C 的完整 RACKC_XXXX 字符串
+    approach_pose: null
+  D:
+    qr: null                 # 填第二队货架 D 的完整 RACKD_XXXX 字符串
+    approach_pose: null

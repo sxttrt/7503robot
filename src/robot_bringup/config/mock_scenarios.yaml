@@ -1,0 +1,49 @@
+# 模拟场景只用于测试，不会驱动底盘。启动时通过 scenario:=名称选择。
+# action_duration_sec、lift_duration_sec、取消延迟的单位均为秒。
+# failures 中的数字表示该状态前几次请求失败，而不是随机概率。
+scenarios:
+  normal: {}
+  navigation_fail_once:
+    failures: {NAV_RACK: 1}
+  navigation_always_fails:
+    failures: {NAV_RACK: 999}
+  navigation_timeout:
+    timeout_states: [NAV_RACK]
+  wrong_rack_qr:
+    qr_wrong_states: [WAIT_RACK_QR]
+  qr_not_found:
+    qr_empty_states: [WAIT_RACK_QR]
+  stale_qr:
+    qr_stale: true
+  docking_failure:
+    failures: {DOCK_ENTER: 1}
+  docking_not_ready:
+    not_ready_to_lift: true
+  lift_failure:
+    failures: {LIFT_UP: 1}
+  lift_timeout:
+    timeout_states: [LIFT_UP]
+  delivery_navigation_failure:
+    failures: {NAV_END: 1}
+  lowering_failure:
+    failures: {LIFT_DOWN: 1}
+  exit_failure:
+    failures: {DOCK_EXIT: 1}
+  estimated_lift:
+    lift_state_source: estimated
+  delayed_cancel_result:
+    timeout_states: [NAV_RACK]
+    cancel_result_delay_sec: 1.0
+  delayed_goal_accept:
+    accept_delay_sec: 1.0
+  health_dropout:
+    health_dropout_after_sec: 2.0
+  stop_failure:
+    failures: {NAV_RACK: 1}
+    stop_failure: true
+  stop_without_confirmation:
+    # 第一个动作结束后停止状态始终不确认，测试代码另使用此配置。
+    failures: {NAV_RACK: 1}
+    stop_never_confirmed: true
+  no_start:
+    no_start: true

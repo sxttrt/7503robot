@@ -1,0 +1,18 @@
+# 以下全部是模拟数据，不对应课程场地实际坐标，也不是第二队真实 QR。
+# SIMTEAM2 只是测试后缀，实机模式会拒绝使用。
+simulation_only: true
+frame_id: map
+destination_pose: [0.0, 1.5, 0.0]
+racks:
+  A:
+    qr: RACKA_SIMTEAM2
+    approach_pose: [0.5, 0.0, 0.0]
+  B:
+    qr: RACKB_SIMTEAM2
+    approach_pose: [1.0, 0.0, 0.0]
+  C:
+    qr: RACKC_SIMTEAM2
+    approach_pose: [1.5, 0.0, 0.0]
+  D:
+    qr: RACKD_SIMTEAM2
+    approach_pose: [2.0, 0.0, 0.0]

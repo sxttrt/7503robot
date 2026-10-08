@@ -1,0 +1,21 @@
+# 请求：只能使用 ENTER（对准并进入）或 EXIT（退出）。
+# 操作编号用于日志和状态关联；ROS 动作本身还有独立的目标标识。
+string request_id
+string operation
+string rack_id
+# 完整的本队货架二维码，禁止仅依据字母 A/B/C/D 托举。
+string expected_qr
+# 最大执行时间，单位为秒；服务端应在超时后停止移动。
+float64 max_duration_sec
+---
+# 结果：成功必须是动作实际完成，不能仅表示收到请求。
+bool success
+# ENTER 成功时必须为真，表示位置已满足机械托举条件。
+bool ready_to_lift
+# EXIT 成功时必须为真，表示底盘已经脱离货架。
+bool exited
+string error_code
+string message
+---
+# 反馈：当前阶段，示例为对准中、进入中、退出中。
+string phase

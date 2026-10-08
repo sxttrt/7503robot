@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mission_manager</name>
+  <version>0.1.0</version>
+  <description>固定 A 至 D 搬运顺序的任务状态机、接口适配与模拟模块</description>
+  <maintainer email="team2@example.invalid">DASE7503 第二队</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>mission_interfaces</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>
