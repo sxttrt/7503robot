@@ -76,6 +76,7 @@ def test_late_goal_acceptance_still_cancels_old_action():
     handle = SimpleNamespace(accepted=True, get_result_async=lambda: result_future,
                              cancel_goal_async=lambda: cancelled.append(True))
     action.requests = {'old': {'handle': None, 'cancelled': False, 'callback': lambda *_: None}}
+    action.pending_results = {}
     action.cancel('old')
     assert not action.idle()
     action.accepted('old', SimpleNamespace(result=lambda: handle))

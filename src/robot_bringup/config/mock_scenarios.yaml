@@ -3,6 +3,15 @@
 # failures 中的数字表示该状态前几次请求失败，而不是随机概率。
 scenarios:
   normal: {}
+  navigation_success_while_moving:
+    # 即便 Action 成功，仍持续报告底盘在运动；主程序不能开始扫码或对准。
+    navigation_success_while_moving: true
+  unexpected_lift_drop:
+    # 搬运阶段反馈机构意外下降，应停止并标记货物状态未知。
+    unexpected_lift_drop: true
+  fault_during_delivery:
+    # 故障时仍发布真实静止反馈，验证能够确认停机而不会恢复任务。
+    fault_during_delivery: true
   navigation_fail_once:
     failures: {NAV_RACK: 1}
   navigation_always_fails:

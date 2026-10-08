@@ -28,7 +28,17 @@ def validate(config, mode):
     """校验固定顺序、动作限时、目标位姿和本队二维码。"""
     if mode not in ('simulation', 'robot'):
         raise ValueError('运行模式只能是 simulation 或 robot')
+    if not isinstance(config, dict) or any(not isinstance(config.get(key), dict)
+                                          for key in ('mission', 'interfaces', 'targets')):
+        raise ValueError('mission、interfaces、targets 必须是配置字典')
     mission, interfaces, targets = (config[key] for key in ('mission', 'interfaces', 'targets'))
+    required = ('game_duration_sec', 'stop_timeout_sec', 'health_timeout_sec',
+                'qr_max_age_sec', 'qr_future_tolerance_sec', 'tick_period_sec',
+                'qr_confirm_frames', 'timeouts', 'retries')
+    if any(key not in mission for key in required):
+        raise ValueError('任务配置缺少必需字段：' + '、'.join(key for key in required if key not in mission))
+    if not isinstance(mission['timeouts'], dict) or not isinstance(mission['retries'], dict):
+        raise ValueError('timeouts 和 retries 必须是字典')
     if mission.get('team_number') != 2:
         raise ValueError('本工程当前固定为第二队，team_number 必须为 2')
     if mission.get('rack_order') != ['A', 'B', 'C', 'D']:
@@ -41,6 +51,8 @@ def validate(config, mode):
         raise ValueError('qr_confirm_frames 必须是正整数')
     for state in ('WAIT_START', 'NAV_RACK', 'WAIT_RACK_QR', 'DOCK_ENTER', 'LIFT_UP',
                   'NAV_END', 'WAIT_END_QR', 'LIFT_DOWN', 'DOCK_EXIT'):
+        if state not in mission['timeouts']:
+            raise ValueError(f'缺少步骤时限：timeouts.{state}')
         number(mission['timeouts'][state], f'timeouts.{state}')
         attempts = mission['retries'].get(state, 0)
         if type(attempts) is not int or attempts < 0:
@@ -54,15 +66,18 @@ def validate(config, mode):
     for state in ('DOCK_ENTER', 'LIFT_UP', 'NAV_END', 'LIFT_DOWN', 'DOCK_EXIT'):
         if mission['retries'].get(state, 0) != 0:
             raise ValueError(f'第一版禁止 {state} 自动重试，避免位置或携货状态不明时继续动作')
-    if mission['tick_period_sec'] >= min(mission['timeouts'].values()):
-        raise ValueError('调度周期必须短于每个步骤的超时时间')
+    if mission['tick_period_sec'] >= min(*mission['timeouts'].values(),
+                                       mission['stop_timeout_sec'], mission['health_timeout_sec']):
+        raise ValueError('调度周期必须短于步骤、停止和健康状态的超时时间')
     if interfaces.get('lift_completion') != 'response_means_completed':
         raise ValueError('第一版升降响应必须代表完成；仅接受命令的服务需要先改写适配器')
     for key in ('navigation_action', 'qr_topic', 'docking_action', 'lift_service',
                 'lift_state_topic', 'health_topic', 'stop_service', 'mission_status_topic'):
         name = interfaces.get(key)
-        if not isinstance(name, str) or not name or name.startswith('/'):
-            raise ValueError(f'{key} 必须是非空相对名称，避免绕过模拟命名空间')
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*', name):
+            raise ValueError(f'{key} 必须是合法相对名称，禁止空格、重复斜杠和绝对路径')
+    if interfaces['navigation_action'] == interfaces['docking_action']:
+        raise ValueError('导航与对准 Action 名称不能相同，避免不同动作类型占用同一接口')
     if not isinstance(targets.get('frame_id'), str) or not targets['frame_id']:
         raise ValueError('targets.frame_id 必须填写地图坐标系名称')
     if mode == 'robot' and targets.get('simulation_only') is not False:

@@ -24,10 +24,11 @@ class ROSBackend:
     """状态机唯一的外部执行入口；模拟与实机共用此后端。"""
 
     def __init__(self, node, config):
+        self.node = node
         names, policy = config['interfaces'], config['mission']
         self.safety = Safety(node, names, policy)
-        self.navigation = Navigation(node, names['navigation_action'])
-        self.docking = Docking(node, names['docking_action'])
+        self.navigation = Navigation(node, names['navigation_action'], self.safety)
+        self.docking = Docking(node, names['docking_action'], self.safety)
         self.lift = Lift(node, names, policy, self.safety)
         self.qr = QR(node, names['qr_topic'], policy)
         self.modules = {'navigation': self.navigation, 'docking': self.docking,
@@ -45,7 +46,14 @@ class ROSBackend:
     def healthy(self):
         return self.safety.healthy()
 
+    def cargo_matches(self, cargo):
+        """运输和空载阶段持续核对机构状态，发现意外落下或升起即停止。"""
+        return self.safety.lift_matches(cargo == 'UP')
+
     def start(self, kind, request, payload, callback):
+        if self.node.closing:
+            callback(request, False, {'reason': '程序正在退出，禁止发起新动作'})
+            return
         self.modules[kind].start(request, payload, callback)
 
     def cancel(self, kind, request):
@@ -55,6 +63,8 @@ class ROSBackend:
         self.safety.stop(request, callback)
 
     def poll(self):
+        self.navigation.poll()
+        self.docking.poll()
         self.lift.poll()
         self.safety.poll(self.navigation.idle() and self.docking.idle() and self.lift.idle())
 
@@ -117,9 +127,14 @@ class MissionNode(Node):
         return response
 
     def on_tick(self):
-        if self.auto_arm and self.mission.state == 'IDLE' and not self.closing:
-            self.mission.arm()
-        self.mission.tick()
+        try:
+            if self.closing:
+                self.mission.manual_stop()
+            elif self.auto_arm and self.mission.state == 'IDLE':
+                self.mission.arm()
+            self.mission.tick()
+        except Exception as exc:
+            self.mission.fail_safe(f'主循环异常：{exc}')
 
 
 def main(args=None):
@@ -131,23 +146,41 @@ def main(args=None):
         node = MissionNode()
 
         def request_shutdown(_signal, _frame):
+            # 信号可打断状态切换；这里只置标志，停止在主循环的安全边界执行。
             node.closing = True
-            node.mission.manual_stop()
 
         for kind in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[kind] = signal.signal(kind, request_shutdown)
-        while rclpy.ok() and not node.closing:
-            rclpy.spin_once(node, timeout_sec=0.1)
-        node.mission.manual_stop()
-        until = time.monotonic() + node.config['mission']['stop_timeout_sec'] + 0.5
-        while rclpy.ok() and node.mission.state not in FINAL_STATES and time.monotonic() < until:
-            rclpy.spin_once(node, timeout_sec=0.1)
-        node.publish_status()
+        try:
+            while rclpy.ok() and not node.closing:
+                rclpy.spin_once(node, timeout_sec=0.1)
+        except Exception as exc:
+            node.closing = True
+            node.mission.fail_safe(f'ROS 回调或主循环异常：{exc}')
     finally:
+        if node is not None:
+            node.closing = True
+            node.mission.manual_stop()
+            until = time.monotonic() + node.config['mission']['stop_timeout_sec'] + 0.5
+            while rclpy.ok() and node.mission.state not in FINAL_STATES and time.monotonic() < until:
+                try:
+                    rclpy.spin_once(node, timeout_sec=0.1)
+                except Exception as exc:
+                    node.mission.fail_safe(f'退出期间回调异常：{exc}')
+            try:
+                node.publish_status()
+            except Exception:
+                # 发布状态失效不影响已经执行的停止握手和后续资源关闭。
+                pass
         for kind, handler in previous_handlers.items():
             signal.signal(kind, handler)
         if node is not None:
-            node.log_stream.close()
-            node.destroy_node()
+            try:
+                node.log_stream.close()
+            finally:
+                # 日志关闭失败也必须销毁 ROS 节点；运动停止握手已在前面执行。
+                node.destroy_node()
+                if rclpy.ok():
+                    rclpy.shutdown()
         if rclpy.ok():
             rclpy.shutdown()

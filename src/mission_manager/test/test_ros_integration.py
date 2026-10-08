@@ -6,6 +6,7 @@
 
 from pathlib import Path
 import os
+import re
 import signal
 import subprocess
 import time
@@ -21,6 +22,9 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
 
 @pytest.mark.parametrize('scenario,expected', [
     ('normal', 'FINISHED'),
+    ('navigation_success_while_moving', 'FAULT'),
+    ('unexpected_lift_drop', 'FAULT'),
+    ('fault_during_delivery', 'FAULT'),
     ('navigation_fail_once', 'FINISHED'),
     ('navigation_always_fails', 'FAULT'),
     ('navigation_timeout', 'FAULT'),
@@ -38,6 +42,7 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
     ('delayed_goal_accept', 'FAULT'),
     ('match_time_up', 'FINISHED'),
     ('operator_stop', 'STOPPED'),
+    ('shutdown_during_delivery', 'STOPPED'),
 ])
 def test_real_ros_execution(tmp_path, scenario, expected):
     """通过订阅公开任务状态判断结果，不直接调用状态机的成功函数。"""
@@ -59,8 +64,8 @@ def test_real_ros_execution(tmp_path, scenario, expected):
         policy['game_duration_sec'] = 1.2
     file = tmp_path / 'mission_test.yaml'
     file.write_text(yaml.safe_dump(policy, allow_unicode=True), encoding='utf-8')
-    namespace, domain = 'team2/check', 197
-    selected = 'normal' if scenario in ('match_time_up', 'operator_stop') else scenario
+    namespace, domain = 'team2/check', 63
+    selected = 'normal' if scenario in ('match_time_up', 'operator_stop', 'shutdown_during_delivery') else scenario
     command = ['ros2', 'launch', 'robot_bringup', 'simulation.launch.py',
                f'scenario:={selected}', f'mission_file:={file}',
                f'namespace:={namespace}', f'domain_id:={domain}', 'auto_arm:=false']
@@ -92,10 +97,26 @@ def test_real_ros_execution(tmp_path, scenario, expected):
                 if stop_client.service_is_ready():
                     stop_client.call_async(Trigger.Request())
                     requested_stop = True
+            if scenario == 'shutdown_during_delivery' and states and states[-1]['state'] == 'NAV_END' and not requested_stop:
+                # 仅给本测试启动的主程序发退出信号，模拟执行模块继续提供停止确认。
+                match = re.search(r'\[mission_node-\d+\]: process started with pid \[(\d+)\]',
+                                  log_file.read_text(encoding='utf-8'))
+                assert match, '未找到本测试主程序的进程编号'
+                os.kill(int(match.group(1)), signal.SIGTERM)
+                requested_stop = True
             if states and states[-1]['state'] in ('FINISHED', 'FAULT', 'STOPPED'):
                 break
         assert states and states[-1]['state'] == expected, (states[-1:] or '无状态')
         final = states[-1]
+        if scenario == 'navigation_success_while_moving':
+            assert not any(state['state'] in ('WAIT_RACK_QR', 'DOCK_ENTER') for state in states)
+        if scenario == 'unexpected_lift_drop':
+            assert final['cargo'] == 'UNKNOWN'
+            assert not any(state['state'] == 'LIFT_DOWN' for state in states)
+        if scenario == 'fault_during_delivery':
+            assert final['cargo'] == 'UP'
+            assert '停止未得到确认' not in final['reason']
+            assert not any(state['state'] == 'LIFT_DOWN' for state in states)
         if scenario in ('normal', 'navigation_fail_once'):
             assert final['completed'] == final['delivered'] == ['A', 'B', 'C', 'D']
             racks = []
@@ -105,7 +126,7 @@ def test_real_ros_execution(tmp_path, scenario, expected):
             assert racks == ['A', 'B', 'C', 'D']
         else:
             assert final['completed'] == []
-        if scenario in ('delivery_navigation_failure', 'operator_stop'):
+        if scenario in ('delivery_navigation_failure', 'operator_stop', 'shutdown_during_delivery'):
             assert final['cargo'] == 'UP'
             assert not any(state['state'] == 'LIFT_DOWN' for state in states)
         if scenario in ('lift_failure', 'lift_timeout', 'lowering_failure'):

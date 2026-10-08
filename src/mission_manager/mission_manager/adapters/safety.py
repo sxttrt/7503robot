@@ -5,6 +5,7 @@ import time
 
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 
 class Safety:
@@ -17,7 +18,10 @@ class Safety:
         self.last_up = None
         self.pending = None
         self.diagnostic = '等待模块健康状态'
-        self.subscription = node.create_subscription(String, interfaces['health_topic'], self.on_status, 10)
+        # 兼容可靠和尽力发送端，只处理最近状态，避免旧消息队列延迟停止判断。
+        qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                         durability=DurabilityPolicy.VOLATILE)
+        self.subscription = node.create_subscription(String, interfaces['health_topic'], self.on_status, qos)
         self.client = node.create_client(Trigger, interfaces['stop_service'])
 
     def on_status(self, message):
@@ -37,13 +41,31 @@ class Safety:
                 return
             if not isinstance(data.get('modules'), dict) or type(data.get('stopped')) is not bool:
                 return
+            if (type(data.get('schema_version')) is not int or data['schema_version'] != 1 or
+                    type(data.get('lift_is_up')) is not bool or
+                    data.get('lift_state_source') not in ('measured', 'estimated') or
+                    not isinstance(data.get('fault'), str)):
+                return
+            if any(type(data['modules'].get(name)) is not bool
+                   for name in ('navigation', 'qr', 'docking', 'lift', 'base')):
+                return
             self.latest, self.received_at, self.stamp_ns = data, time.monotonic(), stamp_ns
         except (ValueError, TypeError, KeyError, AttributeError):
             self.diagnostic = '健康状态格式错误，等待合法数据'
 
-    def healthy(self):
-        if self.received_at is None or time.monotonic() - self.received_at > self.policy['health_timeout_sec']:
+    def fresh(self):
+        """同时检查收包时间和源时间戳，防止延迟状态被额外沿用一个超时周期。"""
+        if self.received_at is None or time.monotonic() - self.received_at >= self.policy['health_timeout_sec']:
             self.diagnostic = '模块健康状态尚未到达或已过期'
+            return False
+        age = (self.node.get_clock().now().nanoseconds - self.stamp_ns) / 1e9
+        if age >= self.policy['health_timeout_sec'] or age < -self.policy['qr_future_tolerance_sec']:
+            self.diagnostic = '模块健康状态源时间戳已过期或时钟不一致'
+            return False
+        return True
+
+    def healthy(self):
+        if not self.fresh():
             return False
         modules = self.latest['modules']
         if any(modules.get(name) is not True for name in ('navigation', 'qr', 'docking', 'lift', 'base')):
@@ -54,6 +76,11 @@ class Safety:
             return False
         self.diagnostic = '健康状态正常'
         return True
+
+    def lift_matches(self, up):
+        """实际到位值和反馈来源必须同时满足配置要求。"""
+        return (self.healthy() and self.latest['lift_is_up'] is up and
+                (self.latest['lift_state_source'] == 'measured' or self.policy['allow_estimated_lift']))
 
     def available(self):
         return self.client.service_is_ready()
@@ -91,7 +118,7 @@ class Safety:
         if not pending or not pending['ack'] or not actions_idle:
             return
         # 必须有请求之后生成的新健康状态，不能用缓存的“已停止”。
-        if (self.healthy() and self.stamp_ns >= pending['begin_ns'] and
+        if (self.fresh() and self.stamp_ns > pending['begin_ns'] and
                 self.latest['stopped'] is True):
             self.pending = None
             pending['callback'](pending['request'], True, {'reason': '停止响应和新鲜静止状态均已确认'})

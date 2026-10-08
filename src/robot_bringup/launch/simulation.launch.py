@@ -21,7 +21,7 @@ def generate_launch_description():
         DeclareLaunchArgument('scenario', default_value='normal', description='中文说明见模拟场景配置'),
         DeclareLaunchArgument('auto_arm', default_value='true', description='模拟默认自动启用；实机必须人工启用'),
         DeclareLaunchArgument('mission_file', default_value=str(folder / 'mission.yaml')),
-        DeclareLaunchArgument('domain_id', default_value='202', description='模拟专用 ROS 通信域'),
+        DeclareLaunchArgument('domain_id', default_value='62', description='模拟专用 ROS 通信域'),
         DeclareLaunchArgument('namespace', default_value='team2/sim', description='模拟接口命名空间'),
         SetEnvironmentVariable('ROS_DOMAIN_ID', LaunchConfiguration('domain_id')),
         SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),

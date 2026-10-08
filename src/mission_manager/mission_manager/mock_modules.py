@@ -207,6 +207,12 @@ class MockModules(Node):
             is_up, stopped = self.is_up, self.motion_count == 0
             stop_requested = self.stop_epoch > 0
             lift_requested = self.counts.get('LIFT_UP', 0) > 0
+        # 故障注入：模拟动作提前报成功、搬运中机构意外落下和模块报错。
+        # 这些仅修改模拟反馈，不操作任何硬件。
+        if self.scenario.get('navigation_success_while_moving') and state == 'NAV_RACK':
+            stopped = False
+        if self.scenario.get('unexpected_lift_drop') and state == 'NAV_END':
+            is_up = False
         stamp = self.get_clock().now().to_msg()
         active_elapsed = 0.0 if self.mission_active_at is None else time.monotonic() - self.mission_active_at
         if active_elapsed < float(self.scenario.get('health_dropout_after_sec', 1e9)):
@@ -215,7 +221,7 @@ class MockModules(Node):
                       'stopped': stopped and not (stop_requested and self.scenario.get('stop_never_confirmed', False)),
                       'lift_is_up': is_up,
                       'lift_state_source': self.scenario.get('lift_state_source', 'measured') if lift_requested else 'measured',
-                      'fault': ''}
+                      'fault': '模拟运输模块故障' if self.scenario.get('fault_during_delivery') and state in ('NAV_END', 'STOPPING') else ''}
             self.health_pub.publish(String(data=json.dumps(health, ensure_ascii=False)))
         self.lift_pub.publish(Bool(data=is_up))
         raw = None

@@ -1,6 +1,6 @@
 """不依赖 ROS 的任务状态机，集中管理固定顺序、超时和货物状态。
 
-后端负责实际通信，提供 start、cancel、stop、poll、ready、healthy 方法。
+后端负责实际通信，提供 start、cancel、stop、poll、ready、healthy、cargo_matches 方法。
 所有完成回调只进入事件队列，统一在 tick 中处理，防止同步回调导致状态重入。
 """
 
@@ -39,6 +39,7 @@ class Mission:
         self.attempts = {}
         self.events = deque()
         self.history = []
+        self.fatal_error = ''
 
     @property
     def rack(self):
@@ -53,26 +54,67 @@ class Mission:
         if not self.backend.ready():
             return False, '模块或接口尚未就绪，请检查任务状态中的诊断信息'
         self.enter('WAIT_START')
-        return True, '已启用，等待有效 START'
+        return (True, '已启用，等待有效 START') if self.state == 'WAIT_START' else (
+            False, self.reason or '启用期间检查失败，正在停止')
 
     def enqueue(self, request_id, success, details=None):
         """携带原请求编号入队；旧回调不能影响新的动作。"""
-        self.events.append((request_id, bool(success), details or {}))
+        if not isinstance(details, dict) and details is not None:
+            success, details = False, {'reason': '模块完成结果格式错误'}
+        self.events.append((request_id, success is True, details or {}))
 
     def transition(self, state, reason=''):
         previous = self.state
         self.state, self.reason = state, reason
         self.history.append({'from': previous, 'to': state, 'rack': self.rack,
                              'reason': reason, 'time': self.clock()})
-        self.on_transition(previous, state, reason)
+        try:
+            self.on_transition(previous, state, reason)
+        except Exception as exc:
+            # 日志或显示异常不能打断真正的停止请求，也不能继续发起新动作。
+            self.fatal_error = f'状态记录或发布异常：{exc}'
 
     def enter(self, state, retry=False):
         """先设置请求和状态，再发起通信，兼容立即完成的模拟回调。"""
+        if self.fatal_error:
+            self.fail_safe(self.fatal_error)
+            return
+        if self.started_at is not None and self.clock() - self.started_at >= self.policy['game_duration_sec']:
+            self.stopping('比赛时间到，停止新增任务', terminal='FINISHED')
+            return
         self.active_request = uuid.uuid4().hex
         self.deadline = self.clock() + self.policy['timeouts'][state]
         if not retry:
             self.attempts[state] = 0
         self.transition(state)
+        if self.fatal_error:
+            self.active_request = self.active_kind = None
+            self.fail_safe(self.fatal_error)
+            return
+        # 记录或发布状态也可能耗时；发出动作之前再次检查全部启动条件。
+        now = self.clock()
+        if self.started_at is not None and now - self.started_at >= self.policy['game_duration_sec']:
+            self.active_request = self.active_kind = None
+            self.stopping('比赛时间到，停止新增任务', terminal='FINISHED')
+            return
+        if now >= self.deadline:
+            self.active_request = self.active_kind = None
+            self.stopping('进入状态期间超过步骤时限，禁止发起动作')
+            return
+        try:
+            if not self.backend.healthy():
+                self.active_request = self.active_kind = None
+                self.stopping('发起动作前模块健康检查失败')
+                return
+            if self.cargo != 'UNKNOWN' and not self.backend.cargo_matches(self.cargo):
+                self.cargo = 'UNKNOWN'
+                self.active_request = self.active_kind = None
+                self.stopping('发起动作前升降状态与携货记录不一致')
+                return
+        except Exception as exc:
+            self.active_request = self.active_kind = None
+            self.fail_safe(f'发起动作前状态检查异常：{exc}')
+            return
         rack = self.rack
         item = self.targets['racks'].get(rack, {})
         if state in ('WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR'):
@@ -124,9 +166,18 @@ class Mission:
     def manual_stop(self):
         if self.state == 'STOPPING':
             # 人工停止优先于已经安排的重试，关闭程序时也不能重新发起运动。
-            self.stop_plan = (None, 'STOPPED', '操作员要求停止')
+            self.stop_plan = (None, 'FAULT' if self.fatal_error else 'STOPPED',
+                              self.fatal_error or '操作员要求停止')
         elif self.state not in FINAL_STATES:
             self.stopping('操作员要求停止', terminal='STOPPED')
+
+    def fail_safe(self, reason):
+        """异常必须撤销重试；已经停止中的异常不得重置停止截止时间。"""
+        self.fatal_error = reason
+        if self.state == 'STOPPING':
+            self.stop_plan = (None, 'FAULT', reason)
+        elif self.state not in FINAL_STATES:
+            self.stopping(reason)
 
     def failed(self, reason):
         """只有空载前往货架及扫码等待允许自动重试，其他失败直接终止。"""
@@ -183,7 +234,10 @@ class Mission:
 
     def tick(self):
         """定期处理事件和截止时间；每次调用都不等待外部动作结束。"""
-        self.backend.poll()
+        try:
+            self.backend.poll()
+        except Exception as exc:
+            self.fail_safe(f'接口轮询异常：{exc}')
         now = self.clock()
         if self.state in FINAL_STATES or self.state == 'IDLE':
             self.events.clear()
@@ -192,11 +246,21 @@ class Mission:
         if time_up:
             if self.state == 'STOPPING':
                 # 时间到优先于待执行的重试，但不重复发停止命令。
-                self.stop_plan = (None, 'FINISHED', '比赛时间到，停止新增任务')
+                if self.stop_plan[0] is not None:
+                    self.stop_plan = (None, 'FINISHED', '比赛时间到，停止新增任务')
             else:
                 self.stopping('比赛时间到，停止新增任务', terminal='FINISHED')
-        if self.state != 'STOPPING' and not self.backend.healthy():
-            self.stopping('必需模块断联、状态过期或报告故障')
+        if self.fatal_error:
+            self.fail_safe(self.fatal_error)
+        if self.state != 'STOPPING':
+            try:
+                if not self.backend.healthy():
+                    self.stopping('必需模块断联、状态过期或报告故障')
+                elif self.cargo != 'UNKNOWN' and not self.backend.cargo_matches(self.cargo):
+                    self.cargo = 'UNKNOWN'
+                    self.stopping('升降实际状态与携货记录不一致，停止并等待人工检查')
+            except Exception as exc:
+                self.fail_safe(f'健康或升降状态检查异常：{exc}')
         # 截止时间先于结果处理，截止之后的成功不能继续推进流程。
         if self.deadline is not None and now >= self.deadline:
             if self.state == 'STOPPING':
@@ -216,7 +280,11 @@ class Mission:
                 if not ok:
                     self.transition('FAULT', '停止失败：' + details.get('reason', '未说明原因'))
                 elif target:
-                    self.enter(target, retry=True)
+                    # 静止已确认仍不等于可以恢复；有故障或机构状态变化时禁止重试。
+                    if not self.backend.healthy() or not self.backend.cargo_matches(self.cargo):
+                        self.transition('FAULT', '停止已确认，但模块或升降状态不满足重试条件')
+                    else:
+                        self.enter(target, retry=True)
                 else:
                     self.transition(terminal, reason)
             elif self.state in ACTION_STATES and request == self.active_request:

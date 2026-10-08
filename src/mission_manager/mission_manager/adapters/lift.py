@@ -26,6 +26,9 @@ class Lift:
         return not self.requests
 
     def start(self, request, payload, callback):
+        if self.requests or self.pending_results:
+            callback(request, False, {'reason': '旧升降请求或到位确认尚未结束，禁止重复下发'})
+            return
         if not self.available():
             callback(request, False, {'reason': '升降服务未就绪'})
             return
@@ -37,19 +40,33 @@ class Lift:
         try:
             self.client.call_async(message).add_done_callback(lambda result: self.result(request, result))
         except Exception as exc:
-            self.requests.pop(request, None)
-            callback(request, False, {'reason': f'升降请求异常：{exc}'})
+            # 请求可能已经到达机构，发送异常也不能视为动作已停止。
+            info['reported'] = True
+            callback(request, False, {'reason': f'升降请求异常，执行状态未确认：{exc}'})
 
     def result(self, request, future):
-        info = self.requests.pop(request, None)
-        if info is None or info['cancelled']:
+        info = self.requests.get(request)
+        if info is None:
             return
         try:
             result = future.result()
+            if type(getattr(result, 'success', None)) is not bool:
+                raise ValueError('升降响应缺少合法完成字段')
+        except Exception as exc:
+            # 响应传输异常不能证明机构动作已经终止，仍阻止停止握手提前通过。
+            if not info['cancelled'] and not info.get('reported'):
+                info['reported'] = True
+                info['callback'](request, False, {'reason': f'升降结果异常，执行状态未确认：{exc}'})
+            return
+        self.requests.pop(request)
+        if info['cancelled'] or info.get('reported'):
+            return
+        try:
             if not result.success:
                 info['callback'](request, False, {'reason': result.message or '升降失败'})
             else:
                 # 响应和健康状态可能通过不同连接乱序到达，因此等待新鲜状态。
+                info['begin_ns'] = self.node.get_clock().now().nanoseconds
                 self.pending_results[request] = info
         except Exception as exc:
             info['callback'](request, False, {'reason': f'升降结果异常：{exc}'})
@@ -59,7 +76,7 @@ class Lift:
             return
         data = self.safety.latest
         for request, info in list(self.pending_results.items()):
-            if self.safety.stamp_ns < info['begin_ns'] or data.get('lift_is_up') is not info['up']:
+            if self.safety.stamp_ns <= info['begin_ns'] or data.get('lift_is_up') is not info['up']:
                 continue
             source = data.get('lift_state_source')
             if source not in ('measured', 'estimated'):

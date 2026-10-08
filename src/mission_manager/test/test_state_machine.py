@@ -12,6 +12,42 @@ from mission_manager.state_machine import FINAL_STATES, Mission
 CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
 
 
+@pytest.mark.parametrize('name', ['nav goal', 'nav//goal', '/nav', 'nav/', '2nav', '~nav'])
+def test_invalid_ros_interface_name_rejected(name):
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml',
+                         CONFIG / 'targets_sim.yaml', 'simulation')
+    config['interfaces']['navigation_action'] = name
+    with pytest.raises(ValueError, match='合法相对名称'):
+        validate(config, 'simulation')
+
+
+@pytest.mark.parametrize('key', ['stop_timeout_sec', 'health_timeout_sec'])
+def test_tick_must_be_shorter_than_safety_deadlines(key):
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml',
+                         CONFIG / 'targets_sim.yaml', 'simulation')
+    config['mission'][key] = config['mission']['tick_period_sec']
+    with pytest.raises(ValueError, match='调度周期'):
+        validate(config, 'simulation')
+
+
+def test_different_action_types_cannot_share_one_endpoint():
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml',
+                         CONFIG / 'targets_sim.yaml', 'simulation')
+    config['interfaces']['docking_action'] = config['interfaces']['navigation_action']
+    with pytest.raises(ValueError, match='名称不能相同'):
+        validate(config, 'simulation')
+
+
+def test_missing_config_reports_explicit_error():
+    with pytest.raises(ValueError, match='配置字典'):
+        validate({'mission': []}, 'simulation')
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml',
+                         CONFIG / 'targets_sim.yaml', 'simulation')
+    config['mission'].pop('health_timeout_sec')
+    with pytest.raises(ValueError, match='health_timeout_sec'):
+        validate(config, 'simulation')
+
+
 class Clock:
     """可推进的单调时钟，使超时验证不必等待真实的三分钟。"""
     def __init__(self):
@@ -29,12 +65,16 @@ class Backend:
         self.stops = []
         self.is_healthy = True
         self.is_ready = True
+        self.is_cargo_consistent = True
 
     def ready(self):
         return self.is_ready
 
     def healthy(self):
         return self.is_healthy
+
+    def cargo_matches(self, _cargo):
+        return self.is_cargo_consistent
 
     def poll(self):
         pass
@@ -309,3 +349,123 @@ def test_invalid_configuration_is_rejected(system, field, value):
     config['mission'][field] = value
     with pytest.raises(ValueError):
         validate(config, 'simulation')
+
+
+def test_unexpected_lift_change_stops_loaded_navigation(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    backend.is_cargo_consistent = False
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING' and mission.cargo == 'UNKNOWN'
+    assert not any(kind == 'lift' and not payload['up'] for kind, _, payload, _ in backend.calls)
+
+
+def test_unexpected_lift_change_blocks_empty_rack_navigation(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    backend.is_cargo_consistent = False
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING'
+    assert not any(payload.get('operation') == 'ENTER' for _, _, payload, _ in backend.calls)
+
+
+def test_state_observer_failure_still_requests_stop(system):
+    mission, backend, _clock = system
+    def broken_observer(*_args):
+        raise OSError('模拟日志磁盘已满')
+    mission.on_transition = broken_observer
+    mission.arm()
+    assert mission.state == 'STOPPING' and backend.stops and not backend.calls
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT'
+
+
+def test_backend_poll_exception_never_retries_motion(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    count = len(backend.calls)
+    def broken_poll():
+        raise RuntimeError('模拟通信回调异常')
+    backend.poll = broken_poll
+    mission.tick()
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and len(backend.calls) == count
+
+
+@pytest.mark.parametrize('terminal', ['FAULT', 'STOPPED'])
+def test_game_expiry_preserves_fault_or_operator_stop(system, terminal):
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_END')
+    clock.now = mission.started_at + 179
+    if terminal == 'FAULT':
+        backend.finish(False)
+        mission.tick()
+    else:
+        mission.manual_stop()
+    clock.now += 1
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == terminal
+
+
+def test_stop_confirmation_cannot_retry_unhealthy_modules(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    backend.finish(False)
+    mission.tick()
+    count = len(backend.calls)
+    backend.is_healthy = False
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and len(backend.calls) == count
+
+
+def test_slow_state_observer_cannot_dispatch_after_game_expiry(system):
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    count = len(backend.calls)
+    def slow_observer(_previous, state, _reason):
+        if state == 'WAIT_RACK_QR':
+            clock.now = mission.started_at + 180
+    mission.on_transition = slow_observer
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING' and len(backend.calls) == count
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FINISHED'
+
+
+def test_slow_state_observer_cannot_dispatch_after_step_deadline(system):
+    mission, backend, clock = system
+    def slow_observer(_previous, state, _reason):
+        if state == 'WAIT_START':
+            clock.now += 61
+    mission.on_transition = slow_observer
+    mission.arm()
+    assert mission.state == 'STOPPING' and not backend.calls
+
+
+def test_truthy_string_result_is_not_success(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    backend.finish('false')
+    mission.tick()
+    assert mission.state == 'STOPPING'
+
+
+def test_health_change_during_transition_blocks_next_request(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    count = len(backend.calls)
+    def observer(_previous, state, _reason):
+        if state == 'WAIT_RACK_QR':
+            backend.is_healthy = False
+    mission.on_transition = observer
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING' and len(backend.calls) == count

@@ -6,8 +6,8 @@ from .navigation import AsyncAction
 
 
 class Docking(AsyncAction):
-    def __init__(self, node, name):
-        super().__init__(node, Dock, name)
+    def __init__(self, node, name, safety=None):
+        super().__init__(node, Dock, name, safety)
 
     def start(self, request, payload, callback):
         goal = Dock.Goal()
