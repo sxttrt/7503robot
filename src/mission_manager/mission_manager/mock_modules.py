@@ -8,8 +8,7 @@ import json
 import threading
 import time
 
-from mission_interfaces.action import Dock
-from nav2_msgs.action import NavigateToPose
+from mission_interfaces.action import Dock, NavigateToPoint
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -52,7 +51,7 @@ class MockModules(Node):
         self.lift_pub = self.create_publisher(Bool, names['lift_state_topic'], 10)
         self.status_sub = self.create_subscription(String, names['mission_status_topic'], self.on_status, 10,
                                                    callback_group=self.group)
-        self.nav_server = ActionServer(self, NavigateToPose, names['navigation_action'],
+        self.nav_server = ActionServer(self, NavigateToPoint, names['navigation_action'],
                                        self.navigate, goal_callback=self.accept_goal,
                                        cancel_callback=self.accept_cancel, callback_group=self.group)
         self.dock_server = ActionServer(self, Dock, names['docking_action'],
@@ -118,23 +117,30 @@ class MockModules(Node):
                 self.motion_count -= 1
 
     def navigate(self, handle):
-        pose = handle.request.pose.pose.position
-        destination = self.config['targets']['destination_pose']
-        state = 'NAV_END' if abs(pose.x - destination[0]) < 1e-6 and abs(pose.y - destination[1]) < 1e-6 else 'NAV_RACK'
+        target = handle.request.target_id
+        result = NavigateToPoint.Result()
+        if target not in ('A', 'B', 'C', 'D', 'DROP_OFF'):
+            result.message = '未知导航点位'
+            handle.abort()
+            return result
+        state = 'NAV_END' if target == 'DROP_OFF' else 'NAV_RACK'
         failed = self.should_fail(state)
+        feedback = NavigateToPoint.Feedback()
+        feedback.phase = f'前往 {target}'
         outcome = self.wait_action(handle, state, float(self.scenario.get('action_duration_sec', 0.35)),
-                                   NavigateToPose.Feedback())
-        result = NavigateToPose.Result()
+                                   feedback)
         if outcome == 'cancelled':
+            result.message = '导航已停止'
             if handle.is_cancel_requested:
                 handle.canceled()
             else:
                 handle.abort()
         elif failed:
-            result.error_code = 1
-            result.error_msg = '模拟导航失败'
+            result.message = '模拟导航失败'
             handle.abort()
         else:
+            result.success = True
+            result.message = f'已到达 {target}'
             handle.succeed()
         return result
 

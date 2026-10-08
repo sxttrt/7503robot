@@ -2,7 +2,7 @@
 <package format="3">
   <name>mission_interfaces</name>
   <version>0.1.0</version>
-  <description>任务主程序与对准模块共享的动作定义</description>
+  <description>任务主程序与导航、对准模块共享的简单动作定义</description>
   <maintainer email="team2@example.invalid">DASE7503 第二队</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

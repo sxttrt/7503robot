@@ -125,8 +125,8 @@ class Mission:
             payload = {'expected_qr': expected}
         elif state in ('NAV_RACK', 'NAV_END'):
             self.active_kind = 'navigation'
-            payload = {'pose': item['approach_pose'] if state == 'NAV_RACK'
-                       else self.targets['destination_pose'], 'frame_id': self.targets['frame_id']}
+            # 任务层只决定去哪个点；点位坐标等细节完全交给导航模块。
+            payload = {'target_id': rack if state == 'NAV_RACK' else 'DROP_OFF'}
         elif state in ('DOCK_ENTER', 'DOCK_EXIT'):
             self.active_kind = 'docking'
             payload = {'operation': 'ENTER' if state == 'DOCK_ENTER' else 'EXIT',

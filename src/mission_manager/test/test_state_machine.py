@@ -335,7 +335,7 @@ def test_real_config_reports_all_unknown_codes():
                     CONFIG / 'targets_robot.yaml', 'robot')
     for rack in 'ABCD':
         assert f'racks.{rack}.qr' in str(error.value)
-    assert 'destination_pose' in str(error.value)
+    assert 'destination_pose' not in str(error.value)
 
 
 def test_simulation_config_is_rejected_in_robot_mode(system):
@@ -686,3 +686,28 @@ def test_exit_success_records_completion_without_extra_flag(system):
     backend.finish(details={})
     mission.tick()
     assert mission.completed == ['A'] and mission.rack == 'B'
+
+
+def test_navigation_commands_only_contain_point_names(system):
+    """完整一轮只有点位名称，没有坐标、坐标系或朝向。"""
+    mission, backend, _clock = system
+    mission.arm()
+    for _ in range(100):
+        if mission.state == 'STOPPING':
+            backend.confirm_stop()
+        elif mission.state in FINAL_STATES:
+            break
+        else:
+            backend.finish()
+        mission.tick()
+    commands = [payload for kind, _request, payload, _callback in backend.calls if kind == 'navigation']
+    assert commands == [{'target_id': target} for target in
+                        ('A', 'DROP_OFF', 'B', 'DROP_OFF', 'C', 'DROP_OFF', 'D', 'DROP_OFF')]
+    assert mission.state == 'FINISHED'
+
+
+def test_real_task_configuration_does_not_require_navigation_coordinates():
+    config = load_config(CONFIG / 'mission.yaml', CONFIG / 'interfaces.yaml', CONFIG / 'targets_sim.yaml', 'simulation')
+    config['targets'] = {'simulation_only': False,
+                         'racks': {rack: {'qr': f'RACK{rack}_REALTEAM2'} for rack in 'ABCD'}}
+    assert validate(config, 'robot')['mode'] == 'robot'

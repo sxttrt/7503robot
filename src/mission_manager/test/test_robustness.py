@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from action_msgs.msg import GoalStatus
-from nav2_msgs.action import NavigateToPose
+from mission_interfaces.action import NavigateToPoint
 
 from mission_manager.adapters.navigation import AsyncAction, Navigation
 from mission_manager.adapters.lift import Lift
@@ -89,9 +89,30 @@ def test_nonterminal_action_response_is_not_completion(status):
 
 
 
-@pytest.mark.parametrize('result', [None, SimpleNamespace(error_code=True), SimpleNamespace(error_code='0')])
-def test_navigation_invalid_error_code_is_not_success(result):
+@pytest.mark.parametrize('result', [None, SimpleNamespace(success=False), SimpleNamespace(success='true')])
+def test_navigation_missing_or_false_completion_is_not_success(result):
     assert Navigation.__new__(Navigation).decode(result)[0] is False
+
+
+@pytest.mark.parametrize('target', ['A', 'B', 'C', 'D', 'DROP_OFF'])
+def test_navigation_adapter_sends_only_point_name(target):
+    navigation = Navigation.__new__(Navigation)
+    goals = []
+    navigation.send = lambda request, goal, callback: goals.append(goal)
+    navigation.start('r1', {'target_id': target}, lambda *_args: None)
+    assert isinstance(goals[0], NavigateToPoint.Goal)
+    assert goals[0].target_id == target
+    assert set(goals[0].get_fields_and_field_types()) == {'target_id'}
+
+
+@pytest.mark.parametrize('status,expected', [(GoalStatus.STATUS_SUCCEEDED, True), (GoalStatus.STATUS_ABORTED, False)])
+def test_point_navigation_uses_final_action_result(status, expected):
+    action, outcomes, _clock = action_reader()
+    action.decode = Navigation.__new__(Navigation).decode
+    result = NavigateToPoint.Result()
+    result.success, result.message = True, '已到达'
+    action.result('r1', Future(SimpleNamespace(status=status, result=result)))
+    assert outcomes[0][1] is expected
 
 
 def test_action_success_does_not_wait_for_extra_status():

@@ -1,9 +1,7 @@
 """导航动作适配；同时提供对准动作可复用的异步取消处理。"""
 
-import math
-
 from action_msgs.msg import GoalStatus
-from nav2_msgs.action import NavigateToPose
+from mission_interfaces.action import NavigateToPoint
 from rclpy.action import ActionClient
 
 
@@ -131,24 +129,17 @@ class AsyncAction:
 
 
 class Navigation(AsyncAction):
-    """输入地图位姿，只有动作最终成功才报告到达。"""
+    """只发送点位名称；具体地图、坐标、朝向和路线由导航模块决定。"""
 
     def __init__(self, node, name, safety=None):
-        super().__init__(node, NavigateToPose, name, safety)
+        super().__init__(node, NavigateToPoint, name, safety)
 
     def start(self, request, payload, callback):
-        goal = NavigateToPose.Goal()
-        x, y, yaw = payload['pose']
-        goal.pose.header.frame_id = payload['frame_id']
-        goal.pose.header.stamp = self.node.get_clock().now().to_msg()
-        goal.pose.pose.position.x = float(x)
-        goal.pose.pose.position.y = float(y)
-        goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
-        goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
+        goal = NavigateToPoint.Goal()
+        goal.target_id = payload['target_id']
         self.send(request, goal, callback)
 
     def decode(self, result):
-        code = getattr(result, 'error_code', None)
-        if type(code) is not int or code < 0:
-            return False, {'reason': '导航结果缺少合法错误码，不能确认成功'}
-        return code == 0, {'reason': getattr(result, 'error_msg', '') or f'导航错误码：{code}'}
+        # 队友只返回完成结果和原因，不再要求导航错误码或额外到点反馈。
+        success = getattr(result, 'success', None) is True
+        return success, {'reason': getattr(result, 'message', '') or ('已到达目标点' if success else '导航失败')}

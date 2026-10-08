@@ -53,3 +53,26 @@ def test_mock_lift_is_moving_until_every_exit_path_finishes(monkeypatch, outcome
     assert mock.motion_count == 0 and mock.is_up is (outcome == 'success')
     mock.publish_observations()
     assert observations[-1] == {'ready': True, 'fault': ''}
+
+
+def test_mock_navigation_rejects_unknown_point():
+    """未知点返回失败，不能错误进入模拟运动。"""
+    from mission_interfaces.action import NavigateToPoint
+    mock = MockModules.__new__(MockModules)
+    aborted = []
+    handle = SimpleNamespace(request=SimpleNamespace(target_id='UNKNOWN'), abort=lambda: aborted.append(True))
+    result = mock.navigate(handle)
+    assert isinstance(result, NavigateToPoint.Result)
+    assert result.success is False and aborted == [True]
+
+
+@pytest.mark.parametrize('target,state', [('A', 'NAV_RACK'), ('DROP_OFF', 'NAV_END')])
+def test_mock_navigation_dispatches_by_point_name(target, state):
+    mock = MockModules.__new__(MockModules)
+    mock.scenario = {}
+    states, succeeded = [], []
+    mock.should_fail = lambda phase: states.append(phase) or False
+    mock.wait_action = lambda *_args: 'finished'
+    handle = SimpleNamespace(request=SimpleNamespace(target_id=target), succeed=lambda: succeeded.append(True))
+    result = mock.navigate(handle)
+    assert result.success is True and states == [state] and succeeded == [True]

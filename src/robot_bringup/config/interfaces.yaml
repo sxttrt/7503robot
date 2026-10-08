@@ -1,7 +1,7 @@
 # 所有名称都是相对名称，由启动文件统一加上命名空间。
 # 模拟默认在 /team2/sim 内；实机默认在 /team2/robot 内。
 # 队友使用其他名称时，可先修改这些名称或用 ROS 重映射；消息类型改变需改适配器。
-navigation_action: navigate_to_pose       # nav2_msgs/action/NavigateToPose
+navigation_action: navigate_to_point      # mission_interfaces/action/NavigateToPoint，只发送 A/B/C/D/DROP_OFF
 qr_topic: qr/detections                  # std_msgs/msg/String，带图像时间戳的 JSON
 docking_action: docking/execute          # mission_interfaces/action/Dock，新接口提案
 lift_service: lift/set_up                # std_srvs/srv/SetBool，true 升起／false 放下，响应代表完成

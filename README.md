@@ -12,9 +12,9 @@
 
 当前使用简化接口：**队友完成动作并停止后返回成功；失败时返回原因；收到停止请求就停止当前动作。主程序直接使用完成结果，不再做令牌、测量来源或二次静止确认。**
 
-升降使用标准 `std_srvs/srv/SetBool`，只发升／降；在线消息仅需 `{"ready": true, "fault": ""}`。导航报告到达目标区后直接放下，默认不扫 END。实机仍需接入真实模块，模拟验证不能代替实物搬运验收。
+**导航只发送 A／B／C／D／DROP_OFF（放置区）**，使用 [NavigateToPoint.action](src/mission_interfaces/action/NavigateToPoint.action)。地图、坐标、朝向和路线由导航队友自己管理。升降使用标准 `std_srvs/srv/SetBool`，只发升／降；在线消息仅需 `{"ready": true, "fault": ""}`。导航报告到达目标区后直接放下，默认不扫 END。实机仍需接入真实模块，模拟验证不能代替实物搬运验收。
 
-简化版已在树莓派构建，**135 项测试全部通过**（114 项逻辑／接口测试＋21 项 ROS 模拟集成测试）。详细结果见 [构建验证记录（自己看）](docs/自己的记录/构建验证记录（自己看）.md) 最新“简化版验证”段落；历史 164 项属于此前的多重确认版本。
+点位导航版已在树莓派构建，**147 项测试全部通过**（126 项逻辑／接口测试＋21 项 ROS 模拟集成测试）。详细结果见 [构建验证记录（自己看）](docs/自己的记录/构建验证记录（自己看）.md) 最新“点位名称导航验证”段落；较早的测试结果属于历史版本。
 
 ## 第一次来，先看什么？
 
@@ -30,7 +30,7 @@
 | 任务 | 先看这些文件 | 需要完成什么 |
 |---|---|---|
 | 主状态机与任务流程 | [state_machine.py](src/mission_manager/mission_manager/state_machine.py)、[mission_node.py](src/mission_manager/mission_manager/mission_node.py) | 维护顺序、计时、重试、失败处理和日志 |
-| LiDAR、定位与导航 | [navigation.py](src/mission_manager/mission_manager/adapters/navigation.py)、[接口说明](docs/给队友看/模块接口说明.md) | 提供真实到点导航，返回成功／失败，支持取消 |
+| LiDAR、定位与导航 | [navigation.py](src/mission_manager/mission_manager/adapters/navigation.py)、[接口说明](docs/给队友看/模块接口说明.md) | 接收点位名，自己管理坐标和导航，返回成功／失败，支持取消 |
 | 相机与 QR 识别 | [qr.py](src/mission_manager/mission_manager/adapters/qr.py)、[实机目标配置](src/robot_bringup/config/targets_robot.yaml) | 发布完整 QR、图像时间戳和当前识别结果 |
 | 局部对准、进入与退出货架 | [Dock.action](src/mission_interfaces/action/Dock.action)、[docking.py](src/mission_manager/mission_manager/adapters/docking.py) | 完成进入或退出后返回成功／失败 |
 | 底盘、ESP32 通信与升降 | [lift.py](src/mission_manager/mission_manager/adapters/lift.py)、[safety.py](src/mission_manager/mission_manager/adapters/safety.py)、[固件说明](firmware/README.md) | 实现升降完成反馈、简单在线状态和停止 |
@@ -52,9 +52,9 @@
 已经安装 ROS 2 Jazzy 并配置软件源后，在 Ubuntu 终端执行：
 
 ```bash
-# 安装项目构建和测试依赖；导航消息定义不等于完整导航系统。
+# 安装任务框架的构建和测试依赖；真实导航依赖由对应模块自行准备。
 sudo apt update
-sudo apt install -y git python3-colcon-common-extensions python3-yaml python3-pytest ros-jazzy-nav2-msgs ros-jazzy-rosidl-default-generators ros-jazzy-rosidl-default-runtime
+sudo apt install -y git python3-colcon-common-extensions python3-yaml python3-pytest ros-jazzy-rosidl-default-generators ros-jazzy-rosidl-default-runtime
 
 # 下载到固定工作区名称，便于按说明运行。
 git clone https://github.com/sxttrt/7503robot.git ~/7503robot_ws
@@ -77,11 +77,12 @@ ros2 launch robot_bringup simulation.launch.py scenario:=navigation_fail_once
 
 ## 实机接入前要补什么？
 
-- 第二队四个货架的完整 QR、实际地图目标位姿，填写 [targets_robot.yaml](src/robot_bringup/config/targets_robot.yaml)。
+- 第二队四个货架的完整 QR，填写 [targets_robot.yaml](src/robot_bringup/config/targets_robot.yaml)。
+- 导航模块自行准备 A/B/C/D/DROP_OFF 五个点位；坐标、地图和朝向不再交给主程序配置。
 - 接入真实导航、QR、对准、升降、健康状态和停止模块。
 - 模块按 [接口说明](docs/给队友看/模块接口说明.md)报告实际完成结果。升降响应只代表“收到命令”的程序，需要先改造。
 
-`SIMTEAM2` 仅是模拟后缀，不能用于实机。当前实机配置为空，启动时会提示缺失项。
+`SIMTEAM2` 仅是模拟后缀，不能用于实机。当前实机 QR 配置为空，启动时会提示缺失项。
 
 ## 修改、提交与日志
 

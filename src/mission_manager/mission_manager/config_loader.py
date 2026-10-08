@@ -25,7 +25,7 @@ def number(value, name, minimum=0.0, allow_zero=False):
 
 
 def validate(config, mode):
-    """校验固定顺序、动作限时、目标位姿和本队二维码。"""
+    """校验固定顺序、动作限时和本队二维码；导航坐标不属于任务配置。"""
     if mode not in ('simulation', 'robot'):
         raise ValueError('运行模式只能是 simulation 或 robot')
     if not isinstance(config, dict) or any(not isinstance(config.get(key), dict)
@@ -78,8 +78,6 @@ def validate(config, mode):
         if name in used_names:
             raise ValueError(f'{key} 与 {used_names[name]} 名称不能相同：{name}，避免串线或调用自身')
         used_names[name] = key
-    if not isinstance(targets.get('frame_id'), str) or not targets['frame_id']:
-        raise ValueError('targets.frame_id 必须填写地图坐标系名称')
     if mode == 'robot' and targets.get('simulation_only') is not False:
         raise ValueError('实机模式禁止使用模拟目标配置')
     if mode == 'simulation' and targets.get('simulation_only') is not True:
@@ -92,21 +90,10 @@ def validate(config, mode):
             missing.append(f'racks.{rack}.qr（第二队完整二维码）')
         elif mode == 'robot' and raw.endswith('_SIMTEAM2'):
             missing.append(f'racks.{rack}.qr（禁止使用模拟后缀）')
-        pose = item.get('approach_pose')
-        if not valid_pose(pose):
-            missing.append(f'racks.{rack}.approach_pose（x、y、朝向）')
-    if not valid_pose(targets.get('destination_pose')):
-        missing.append('destination_pose（目标区位姿）')
     if missing:
         raise ValueError('以下配置尚未填写或无效：\n  ' + '\n  '.join(missing))
     config['mode'] = mode
     return config
-
-
-def valid_pose(pose):
-    """坐标必须是三个有限数字；单位依次为米、米、弧度。"""
-    return (isinstance(pose, list) and len(pose) == 3 and
-            all(type(value) in (int, float) and math.isfinite(value) for value in pose))
 
 
 def load_config(mission_file, interfaces_file, targets_file, mode):
