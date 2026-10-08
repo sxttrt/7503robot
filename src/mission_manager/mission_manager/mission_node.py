@@ -35,7 +35,7 @@ class ROSBackend:
                         'lift': self.lift, 'qr': self.qr}
 
     def ready(self):
-        return (self.healthy() and self.safety.latest['stopped'] is True and
+        return (self.healthy() and self.stationary() and
                 self.safety.latest.get('lift_is_up') is False and
                 (self.safety.latest.get('lift_state_source') == 'measured' or
                  (self.safety.policy['allow_estimated_lift'] and
@@ -45,6 +45,13 @@ class ROSBackend:
 
     def healthy(self):
         return self.safety.healthy()
+
+    def stationary(self):
+        """静止是动作交接条件，模块在线不能代替机器人已经停下。"""
+        return self.safety.fresh() and self.safety.latest['stopped'] is True
+
+    def cargo_observation(self):
+        return self.safety.lift_observation()
 
     def cargo_matches(self, cargo):
         """运输和空载阶段持续核对机构状态，发现意外落下或升起即停止。"""
@@ -121,9 +128,7 @@ class MissionNode(Node):
         return response
 
     def stop(self, _request, response):
-        self.mission.manual_stop()
-        response.success = True
-        response.message = '已请求停止；实际停止结果请观察任务状态，响应不表示已静止'
+        response.success, response.message = self.mission.manual_stop(reissue=True)
         return response
 
     def on_tick(self):

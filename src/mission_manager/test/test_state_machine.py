@@ -66,6 +66,15 @@ class Backend:
         self.is_healthy = True
         self.is_ready = True
         self.is_cargo_consistent = True
+        self.is_stationary = True
+        self.is_up = False
+
+    def stationary(self):
+        return self.is_stationary
+
+    def cargo_observation(self):
+        up = self.is_up if self.is_cargo_consistent else not self.is_up
+        return 'UP' if up else 'EMPTY'
 
     def ready(self):
         return self.is_ready
@@ -94,6 +103,8 @@ class Backend:
             details = {'ready_to_lift': True, 'exited': True}
             if kind == 'lift':
                 details['is_up'] = payload['up']
+        if kind == 'lift' and success is True and type(details.get('is_up')) is bool:
+            self.is_up = details['is_up']
         callback(request, success, details)
 
     def confirm_stop(self, success=True):
@@ -469,3 +480,168 @@ def test_health_change_during_transition_blocks_next_request(system):
     backend.finish()
     mission.tick()
     assert mission.state == 'STOPPING' and len(backend.calls) == count
+
+
+@pytest.mark.parametrize('terminal', ['FAULT', 'FINISHED', 'STOPPED'])
+def test_explicit_stop_in_terminal_reissues_without_resuming(system, terminal):
+    """故障后的第二次人工停止必须真实发出，同时保留任务结束结果。"""
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.stopping('原始结束原因', terminal=terminal)
+    backend.confirm_stop()
+    mission.tick()
+    calls = len(backend.calls)
+    old_request, old_callback = backend.stops[-1]
+    assert mission.manual_stop(reissue=True)[0]
+    assert len(backend.stops) == 2 and mission.state == 'STOPPING'
+    deadline = mission.deadline
+    # 程序退出循环不能不断重发或延长截止时间；旧停止回调也不能完成新握手。
+    clock.now += 0.1
+    mission.manual_stop()
+    old_callback(old_request, True, {})
+    mission.tick()
+    assert mission.state == 'STOPPING' and mission.deadline == deadline
+    assert len(backend.stops) == 2
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == terminal and mission.reason == '原始结束原因'
+    assert len(backend.calls) == calls and not mission.arm()[0]
+    assert not mission.manual_stop()[0] and len(backend.stops) == 2
+
+
+def test_second_stop_after_unconfirmed_stop_reaches_physical_backend(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    mission.manual_stop()
+    backend.confirm_stop(False)
+    mission.tick()
+    assert mission.state == 'FAULT'
+    original_reason = mission.reason
+    # 检查 ROS 人工停止服务自身，不只是调用状态机的方法。
+    from types import SimpleNamespace
+    from mission_manager.mission_node import MissionNode
+    response = MissionNode.stop(SimpleNamespace(mission=mission), None, SimpleNamespace())
+    assert response.success and len(backend.stops) == 2
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and mission.reason == original_reason
+
+
+def test_slow_stop_observer_cannot_delay_stop_dispatch(system):
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_END')
+    def slow_observer(_previous, state, _reason):
+        if state == 'STOPPING':
+            assert len(backend.stops) == 1
+            clock.now += 6.0
+    mission.on_transition = slow_observer
+    mission.manual_stop()
+    assert len(backend.stops) == 1
+    mission.tick()
+    assert mission.state == 'FAULT' and '停止未得到确认' in mission.reason
+
+
+def test_tick_rechecks_stop_deadline_after_slow_observer(system):
+    mission, backend, clock = system
+    advance_to(mission, backend, 'NAV_END')
+    def slow_observer(_previous, state, _reason):
+        if state == 'STOPPING':
+            backend.confirm_stop()
+            clock.now += 6.0
+    mission.on_transition = slow_observer
+    backend.is_healthy = False
+    mission.tick()
+    assert mission.state == 'FAULT' and '停止未得到确认' in mission.reason
+
+
+@pytest.mark.parametrize('state', ['WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR'])
+def test_motion_while_waiting_for_qr_blocks_all_following_actions(system, state):
+    mission, backend, _clock = system
+    advance_to(mission, backend, state)
+    count = len(backend.calls)
+    backend.is_stationary = False
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING' and len(backend.calls) == count
+    assert mission.stop_plan[0] is None
+
+
+@pytest.mark.parametrize('next_state', ['DOCK_ENTER', 'LIFT_DOWN'])
+def test_motion_during_transition_blocks_docking_and_lowering(system, next_state):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'WAIT_RACK_QR' if next_state == 'DOCK_ENTER' else 'WAIT_END_QR')
+    count = len(backend.calls)
+    def observer(_previous, state, _reason):
+        if state == next_state:
+            backend.is_stationary = False
+    mission.on_transition = observer
+    backend.finish()
+    mission.tick()
+    assert mission.state == 'STOPPING' and len(backend.calls) == count
+
+
+def test_shutdown_during_fault_stop_preserves_original_fault(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    backend.finish(False, {'reason': '运输路径无法规划'})
+    mission.tick()
+    deadline = mission.deadline
+    mission.manual_stop()
+    mission.manual_stop(reissue=True)
+    assert mission.deadline == deadline and len(backend.stops) == 1
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and mission.reason == '运输路径无法规划'
+
+
+@pytest.mark.parametrize('already_terminal', [False, True])
+def test_lift_change_during_or_after_stop_invalidates_cargo(system, already_terminal):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_END')
+    calls = len(backend.calls)
+    mission.manual_stop()
+    if already_terminal:
+        backend.confirm_stop()
+        mission.tick()
+        assert mission.state == 'STOPPED'
+    backend.is_up = False
+    backend.is_healthy = False
+    mission.tick()
+    assert mission.cargo == 'UNKNOWN' and mission.state == 'STOPPING'
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and len(backend.calls) == calls
+
+
+def test_lift_change_during_retry_stop_cancels_retry(system):
+    mission, backend, _clock = system
+    advance_to(mission, backend, 'NAV_RACK')
+    backend.finish(False)
+    mission.tick()
+    assert mission.stop_plan[0] == 'NAV_RACK'
+    backend.is_up = True
+    backend.confirm_stop()
+    mission.tick()
+    assert mission.state == 'FAULT' and mission.cargo == 'UNKNOWN'
+    assert len(backend.calls) == 2
+
+
+@pytest.mark.parametrize('key,other', [
+    ('qr_topic', 'health_topic'), ('lift_service', 'stop_service'),
+    ('health_topic', 'mission_status_topic'), ('lift_state_topic', 'qr_topic'),
+])
+def test_interface_endpoint_collisions_rejected(system, key, other):
+    mission, _backend, _clock = system
+    config = deepcopy(mission.config)
+    config['interfaces'][key] = config['interfaces'][other]
+    with pytest.raises(ValueError, match='名称不能相同'):
+        validate(config, 'simulation')
+
+
+@pytest.mark.parametrize('reserved', ['mission/stop', 'mission/arm'])
+def test_physical_stop_cannot_call_mission_control_itself(system, reserved):
+    mission, _backend, _clock = system
+    config = deepcopy(mission.config)
+    config['interfaces']['stop_service'] = reserved
+    with pytest.raises(ValueError, match='调用自身'):
+        validate(config, 'simulation')

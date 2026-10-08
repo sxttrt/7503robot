@@ -43,6 +43,10 @@ CONFIG = Path(__file__).resolve().parents[2] / 'robot_bringup' / 'config'
     ('match_time_up', 'FINISHED'),
     ('operator_stop', 'STOPPED'),
     ('shutdown_during_delivery', 'STOPPED'),
+    ('motion_during_end_qr', 'FAULT'),
+    ('lift_drop_during_stop', 'FAULT'),
+    ('operator_retries_stop_after_fault', 'FAULT'),
+    ('shutdown_during_fault_stop', 'FAULT'),
 ])
 def test_real_ros_execution(tmp_path, scenario, expected):
     """通过订阅公开任务状态判断结果，不直接调用状态机的成功函数。"""
@@ -66,6 +70,10 @@ def test_real_ros_execution(tmp_path, scenario, expected):
     file.write_text(yaml.safe_dump(policy, allow_unicode=True), encoding='utf-8')
     namespace, domain = 'team2/check', 63
     selected = 'normal' if scenario in ('match_time_up', 'operator_stop', 'shutdown_during_delivery') else scenario
+    if scenario == 'operator_retries_stop_after_fault':
+        selected = 'stop_fail_once'
+    if scenario == 'shutdown_during_fault_stop':
+        selected = 'delivery_navigation_failure'
     command = ['ros2', 'launch', 'robot_bringup', 'simulation.launch.py',
                f'scenario:={selected}', f'mission_file:={file}',
                f'namespace:={namespace}', f'domain_id:={domain}', 'auto_arm:=false']
@@ -82,6 +90,9 @@ def test_real_ros_execution(tmp_path, scenario, expected):
     arm_client = observer.create_client(Trigger, f'/{namespace}/mission/arm')
     requested_arm = False
     requested_stop = False
+    repeated_stop_seen = False
+    original_fault = None
+    repeat_response = None
     try:
         until = time.monotonic() + 40.0
         while time.monotonic() < until:
@@ -104,10 +115,35 @@ def test_real_ros_execution(tmp_path, scenario, expected):
                 assert match, '未找到本测试主程序的进程编号'
                 os.kill(int(match.group(1)), signal.SIGTERM)
                 requested_stop = True
+            if (scenario == 'shutdown_during_fault_stop' and states and
+                    states[-1]['state'] == 'STOPPING' and not requested_stop):
+                match = re.search(r'\[mission_node-\d+\]: process started with pid \[(\d+)\]',
+                                  log_file.read_text(encoding='utf-8'))
+                assert match, '未找到本测试主程序的进程编号'
+                os.kill(int(match.group(1)), signal.SIGTERM)
+                requested_stop = True
+            if scenario == 'operator_retries_stop_after_fault' and states:
+                if states[-1]['state'] == 'FAULT' and not requested_stop:
+                    original_fault = states[-1]['reason']
+                    repeat_response = stop_client.call_async(Trigger.Request())
+                    requested_stop = True
+                    continue
+                if requested_stop and states[-1]['state'] == 'STOPPING':
+                    repeated_stop_seen = True
+                if not repeated_stop_seen:
+                    continue
             if states and states[-1]['state'] in ('FINISHED', 'FAULT', 'STOPPED'):
                 break
         assert states and states[-1]['state'] == expected, (states[-1:] or '无状态')
         final = states[-1]
+        if scenario == 'operator_retries_stop_after_fault':
+            assert repeated_stop_seen and repeat_response.done() and repeat_response.result().success
+            assert final['reason'] == original_fault
+        if scenario == 'shutdown_during_fault_stop':
+            assert requested_stop and '模拟导航失败' in final['reason']
+        if scenario in ('motion_during_end_qr', 'lift_drop_during_stop'):
+            assert not any(state['state'] == 'LIFT_DOWN' for state in states)
+            assert final['cargo'] == ('UP' if scenario == 'motion_during_end_qr' else 'UNKNOWN')
         if scenario == 'navigation_success_while_moving':
             assert not any(state['state'] in ('WAIT_RACK_QR', 'DOCK_ENTER') for state in states)
         if scenario == 'unexpected_lift_drop':

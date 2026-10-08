@@ -190,7 +190,8 @@ def lift_reader():
                            'callback': lambda *args: outcomes.append(args)}}
     lift.pending_results = {}
     lift.safety = SimpleNamespace(healthy=lambda: True, stamp_ns=clock.ns,
-                                 latest={'lift_is_up': True, 'lift_state_source': 'measured'})
+                                 latest={'lift_is_up': True, 'lift_state_source': 'measured',
+                                         'stopped': True})
     return lift, outcomes, clock
 
 
@@ -237,3 +238,34 @@ def test_qr_large_frame_gap_restarts_consecutive_confirmation():
     reader.observe(observation(10_200_000_000), 10_200_000_000)
     reader.observe(observation(11_300_000_000), 11_300_000_000)
     assert reader.count == 1 and not outcomes
+
+
+def test_lift_success_waits_until_all_motion_has_stopped():
+    lift, outcomes, clock = lift_reader()
+    lift.result('r1', Future(SimpleNamespace(success=True, message='完成')))
+    lift.safety.stamp_ns = clock.ns + 1
+    lift.safety.latest['stopped'] = False
+    lift.poll()
+    assert not outcomes and lift.pending_results
+    lift.safety.latest['stopped'] = True
+    lift.poll()
+    assert len(outcomes) == 1 and outcomes[0][1] is True
+
+
+def test_cargo_observation_remains_valid_during_module_fault(monkeypatch):
+    reader, data, clock, _monotonic = health_reader(monkeypatch)
+    data['fault'] = '模拟运输故障'
+    data['lift_is_up'] = True
+    reader.on_status(SimpleNamespace(data=json.dumps(data)))
+    assert not reader.healthy() and reader.lift_observation() == 'UP'
+    clock.ns += 2_100_000_000
+    assert reader.lift_observation() is None
+
+
+def test_disallowed_estimated_cargo_is_not_used_as_observation(monkeypatch):
+    reader, data, _clock, _monotonic = health_reader(monkeypatch)
+    data['lift_state_source'] = 'estimated'
+    reader.on_status(SimpleNamespace(data=json.dumps(data)))
+    assert reader.lift_observation() is None
+    reader.policy['allow_estimated_lift'] = True
+    assert reader.lift_observation() == 'EMPTY'

@@ -71,13 +71,15 @@ def validate(config, mode):
         raise ValueError('调度周期必须短于步骤、停止和健康状态的超时时间')
     if interfaces.get('lift_completion') != 'response_means_completed':
         raise ValueError('第一版升降响应必须代表完成；仅接受命令的服务需要先改写适配器')
+    used_names = {'mission/arm': '主程序启用服务', 'mission/stop': '主程序人工停止服务'}
     for key in ('navigation_action', 'qr_topic', 'docking_action', 'lift_service',
                 'lift_state_topic', 'health_topic', 'stop_service', 'mission_status_topic'):
         name = interfaces.get(key)
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*', name):
             raise ValueError(f'{key} 必须是合法相对名称，禁止空格、重复斜杠和绝对路径')
-    if interfaces['navigation_action'] == interfaces['docking_action']:
-        raise ValueError('导航与对准 Action 名称不能相同，避免不同动作类型占用同一接口')
+        if name in used_names:
+            raise ValueError(f'{key} 与 {used_names[name]} 名称不能相同：{name}，避免串线或调用自身')
+        used_names[name] = key
     if not isinstance(targets.get('frame_id'), str) or not targets['frame_id']:
         raise ValueError('targets.frame_id 必须填写地图坐标系名称')
     if mode == 'robot' and targets.get('simulation_only') is not False:

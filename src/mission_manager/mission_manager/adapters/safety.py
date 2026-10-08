@@ -82,6 +82,17 @@ class Safety:
         return (self.healthy() and self.latest['lift_is_up'] is up and
                 (self.latest['lift_state_source'] == 'measured' or self.policy['allow_estimated_lift']))
 
+    def lift_observation(self):
+        """模块报故障时仍读取合法到位值，防止停机后的携货信息继续失真。
+
+        此方法仅反映升降观察，不能用来证明模块健康或允许恢复运动。
+        """
+        if not self.fresh():
+            return None
+        if self.latest['lift_state_source'] != 'measured' and not self.policy['allow_estimated_lift']:
+            return None
+        return 'UP' if self.latest['lift_is_up'] else 'EMPTY'
+
     def available(self):
         return self.client.service_is_ready()
 

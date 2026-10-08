@@ -172,32 +172,46 @@ class MockModules(Node):
         return result
 
     def lift(self, request, response):
+        """升降也是运动；所有返回路径都撤销运动计数，不能提前报告静止。"""
         state = 'LIFT_UP' if request.data else 'LIFT_DOWN'
         failed = self.should_fail(state)
         with self.lock:
             epoch = self.stop_epoch
+            self.motion_count += 1
         begin = time.monotonic()
-        while rclpy.ok():
+        try:
+            while rclpy.ok():
+                with self.lock:
+                    stopped = epoch != self.stop_epoch
+                if stopped:
+                    response.success, response.message = False, '升降已按停止请求中止，保持当前状态'
+                    return response
+                if state not in self.scenario.get('timeout_states', []) and time.monotonic() - begin >= float(self.scenario.get('lift_duration_sec', 0.25)):
+                    break
+                time.sleep(0.05)
+            if not rclpy.ok():
+                response.success, response.message = False, '模拟节点正在退出，升降未确认完成'
+            elif failed:
+                response.success, response.message = False, '模拟升降失败'
+            else:
+                with self.lock:
+                    # 到位更新与停止请求共用锁，避免停机已下发仍改写为成功。
+                    if epoch != self.stop_epoch:
+                        response.success, response.message = False, '升降已按停止请求中止'
+                        return response
+                    self.is_up = bool(request.data)
+                response.success, response.message = True, '模拟升降实际完成，状态随后发布'
+            return response
+        finally:
             with self.lock:
-                stopped = epoch != self.stop_epoch
-            if stopped:
-                response.success, response.message = False, '升降已按停止请求中止，保持当前状态'
-                return response
-            if state not in self.scenario.get('timeout_states', []) and time.monotonic() - begin >= float(self.scenario.get('lift_duration_sec', 0.25)):
-                break
-            time.sleep(0.05)
-        if failed:
-            response.success, response.message = False, '模拟升降失败'
-        else:
-            with self.lock:
-                self.is_up = bool(request.data)
-            response.success, response.message = True, '模拟升降实际完成，状态随后发布'
-        return response
+                self.motion_count -= 1
 
     def stop(self, _request, response):
         with self.lock:
             self.stop_epoch += 1
-        response.success = not self.scenario.get('stop_failure', False)
+            number = self.stop_epoch
+        response.success = (not self.scenario.get('stop_failure', False) and
+                            number > int(self.scenario.get('stop_failures', 0)))
         response.message = '停止请求已执行；等待新鲜静止状态确认'
         return response
 
@@ -212,6 +226,10 @@ class MockModules(Node):
         if self.scenario.get('navigation_success_while_moving') and state == 'NAV_RACK':
             stopped = False
         if self.scenario.get('unexpected_lift_drop') and state == 'NAV_END':
+            is_up = False
+        if self.scenario.get('motion_during_end_qr') and state == 'WAIT_END_QR':
+            stopped = False
+        if self.scenario.get('lift_drop_during_stop') and state == 'STOPPING':
             is_up = False
         stamp = self.get_clock().now().to_msg()
         active_elapsed = 0.0 if self.mission_active_at is None else time.monotonic() - self.mission_active_at

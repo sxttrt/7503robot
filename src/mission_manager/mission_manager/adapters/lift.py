@@ -76,7 +76,8 @@ class Lift:
             return
         data = self.safety.latest
         for request, info in list(self.pending_results.items()):
-            if self.safety.stamp_ns <= info['begin_ns'] or data.get('lift_is_up') is not info['up']:
+            if (self.safety.stamp_ns <= info['begin_ns'] or
+                    data.get('lift_is_up') is not info['up'] or data.get('stopped') is not True):
                 continue
             source = data.get('lift_state_source')
             if source not in ('measured', 'estimated'):
