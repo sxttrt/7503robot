@@ -1,0 +1,10 @@
+simulation_only: true
+racks:
+  A:
+    qr: RACKA_XXXX
+  B:
+    qr: RACKB_XXXX
+  C:
+    qr: RACKC_XXXX
+  D:
+    qr: RACKD_XXXX

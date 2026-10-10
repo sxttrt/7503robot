@@ -11,7 +11,8 @@ import uuid
 
 FINAL_STATES = {'FINISHED', 'FAULT', 'STOPPED'}
 ACTION_STATES = {'NAV_RACK', 'WAIT_RACK_QR', 'DOCK_ENTER', 'LIFT_UP',
-                 'NAV_END', 'WAIT_END_QR', 'LIFT_DOWN', 'DOCK_EXIT', 'WAIT_START'}
+                 'NAV_END', 'WAIT_END_QR', 'LIFT_DOWN', 'DOCK_EXIT', 'WAIT_START',
+                 'NAV_START', 'NAV_FINAL', 'WAIT_FINAL_QR'}
 
 
 class Mission:
@@ -30,6 +31,8 @@ class Mission:
         self.completed = []
         self.delivered = []
         self.started_at = None
+        self.final_confirmed = False
+        self.final_wait_timed_out = False
         self.deadline = None
         self.active_request = None
         self.active_kind = None
@@ -57,8 +60,9 @@ class Mission:
             return False, '当前不是待启用状态，本轮不允许再次启用'
         if not self.backend.ready():
             return False, '模块或接口尚未就绪，请检查任务状态中的诊断信息'
-        self.enter('WAIT_START')
-        return (True, '已启用，等待有效 START') if self.state == 'WAIT_START' else (
+        first='NAV_START' if self.policy.get('scan_route',False) else 'WAIT_START'
+        self.enter(first)
+        return (True, '已启用，等待有效 START') if self.state == first else (
             False, self.reason or '启用期间检查失败，正在停止')
 
     def enqueue(self, request_id, success, details=None):
@@ -119,14 +123,15 @@ class Mission:
             return
         rack = self.rack
         item = self.targets['racks'].get(rack, {})
-        if state in ('WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR'):
+        if state in ('WAIT_START', 'WAIT_RACK_QR', 'WAIT_END_QR', 'WAIT_FINAL_QR'):
             self.active_kind = 'qr'
-            expected = {'WAIT_START': 'START', 'WAIT_END_QR': 'END'}.get(state, item.get('qr'))
+            expected = {'WAIT_START': 'START', 'WAIT_END_QR': 'END', 'WAIT_FINAL_QR': 'END'}.get(state, item.get('qr'))
             payload = {'expected_qr': expected}
-        elif state in ('NAV_RACK', 'NAV_END'):
+        elif state in ('NAV_RACK', 'NAV_END', 'NAV_START', 'NAV_FINAL'):
             self.active_kind = 'navigation'
             # 任务层只决定去哪个点；点位坐标等细节完全交给导航模块。
-            payload = {'target_id': rack if state == 'NAV_RACK' else 'DROP_OFF'}
+            payload = {'target_id': {'NAV_RACK':rack,'NAV_END':'DROP_OFF',
+                                     'NAV_START':'START_SCAN','NAV_FINAL':'FINAL_SCAN'}[state]}
         elif state in ('DOCK_ENTER', 'DOCK_EXIT'):
             self.active_kind = 'docking'
             payload = {'operation': 'ENTER' if state == 'DOCK_ENTER' else 'EXIT',
@@ -137,6 +142,7 @@ class Mission:
             # 动作发出后，到位前均不能声称货物状态已被确认。
             self.cargo = 'UNKNOWN'
             payload = {'up': state == 'LIFT_UP'}
+        if self.policy.get('scan_route',False):payload['phase']=state
         request = self.active_request
         try:
             self.backend.start(self.active_kind, request, payload, self.enqueue)
@@ -235,7 +241,15 @@ class Mission:
         """按照模块完成结果推进阶段；进入成功由对准模块保证可托举。"""
         state = self.state
         self.active_request = self.active_kind = None
-        if state == 'WAIT_START':
+        if state == 'NAV_START':
+            self.enter('WAIT_START')
+        elif state == 'NAV_FINAL':
+            self.enter('WAIT_FINAL_QR')
+        elif state == 'WAIT_FINAL_QR':
+            self.final_wait_timed_out=details.get('qr_timeout_advance') is True
+            self.final_confirmed=not self.final_wait_timed_out
+            self.stopping('END 等待超时自动结束' if self.final_wait_timed_out else 'END 已确认',terminal='FINISHED')
+        elif state == 'WAIT_START':
             self.started_at = self.clock()
             self.enter('NAV_RACK')
         elif state == 'NAV_RACK':
@@ -266,7 +280,8 @@ class Mission:
             self.completed.append(self.rack)
             self.index += 1
             if self.rack is None:
-                self.stopping('A、B、C、D 全部完成', terminal='FINISHED')
+                if self.policy.get('scan_route',False):self.enter('NAV_FINAL')
+                else:self.stopping('A、B、C、D 全部完成', terminal='FINISHED')
             else:
                 self.enter('NAV_RACK')
 
@@ -305,6 +320,12 @@ class Mission:
                 self.stop_status = 'TIMED_OUT'
                 self.stop_result_reason = '停止未在时限内得到确认，请人工检查'
                 self.transition('FAULT', self.stop_plan[2] + '；停止未得到确认，请人工检查；自动流程已终止')
+            elif (self.config['mode']=='simulation' and self.policy.get('qr_timeout_advance',False)
+                    and self.state in ('WAIT_START','WAIT_RACK_QR','WAIT_END_QR','WAIT_FINAL_QR')):
+                timeout_reason=f'{self.state} 等待超时，按仿真配置自动推进'
+                self.invalidate_action()
+                self.success({'qr_timeout_advance':True})
+                if self.state!='STOPPING':self.reason=timeout_reason
             elif self.state == 'WAIT_START':
                 # START 尚未出现时不启动比赛，只报告等待超时并重新观察。
                 self.invalidate_action()

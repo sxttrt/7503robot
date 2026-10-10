@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+
+.build-root
+.build_cache_backups/
+navigation/log/
+integration_backups/
+*:Zone.Identifier
+.wsl_copy_metadata/

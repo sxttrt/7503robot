@@ -1,0 +1,34 @@
+# 导航规划器 -> 上位机轨迹跟踪器。本包 robot_navigation/path_tracker 已实现树莓派 ROS 服务端。
+# 推荐实机名 /team2/robot/base/track_path；不是直接发送给 ESP32 的协议。
+string request_id
+# map 中有序路径，第一点为规划起点；相邻点只沿一条场地轴变化。
+# Pose 姿态表示车头方向，不是路径切线。空路径、非有限数值和斜线必须拒绝。
+nav_msgs/Path path
+bool carrying
+# 只有空载允许原地回正/起终点扫码旋转；载货时必须为 false。
+bool allow_in_place_rotation
+# 单位 m/s、rad/s；服务端还要按真实底盘能力限幅。
+float64 max_linear_speed
+float64 max_angular_speed
+# 位置容差也界定规划走廊允许的偏移；导航须在安全间距外预留此误差。
+# 最终误差容差，单位 m、rad。
+float64 position_tolerance
+float64 yaw_tolerance
+# 停稳阈值 m/s、rad/s，连续停稳时间 s；必须使用新鲜实测反馈。
+float64 stop_linear_speed
+float64 stop_angular_speed
+float64 settle_duration_sec
+float64 max_duration_sec
+---
+# success 仅代表最终位姿到位且停稳，不代表收到路径或发出了零速度。
+bool success
+bool stopped
+# 本次最终实测位姿，frame=map，时间戳为定位采样时间。
+geometry_msgs/PoseStamped final_pose
+string error_code
+string message
+---
+# 正在执行的路径段，从 0 开始；剩余路径长度 m。
+uint32 segment_index
+float64 distance_remaining
+string phase

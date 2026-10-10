@@ -1,0 +1,23 @@
+# 导航负责人填写场地 map 坐标；不向主状态机暴露坐标。
+simulation_only: false
+points:
+  START_SCAN: null
+  FINAL_SCAN: null
+  A: null
+  B: null
+  C: null
+  D: null
+drop_by_rack:
+  A: null
+  B: null
+  C: null
+  D: null
+# 实测每架 bounds: [xmin,xmax,ymin,ymax]、leg_thickness（腿厚）、
+# exit_distance（沿场地 +x 退出距离）、max_entry_distance（进架路程上限），均为 m。
+# 接近点在架的 +x 外侧，先在架外对齐 y，再沿 -x 进入几何中心。
+# 架口窄段使用此几何与雷达闭环，绕过自身架腿的地图膨胀；升降仍调用队友接口。
+docking:
+  A: null
+  B: null
+  C: null
+  D: null

@@ -18,5 +18,7 @@ setup(
     entry_points={'console_scripts': [
         'mission_node = mission_manager.mission_node:main',
         'mock_modules = mission_manager.mock_modules:main',
+        'framework_execution = mission_manager.framework_execution:main',
+        'hybrid_execution = mission_manager.hybrid_execution:main',
     ]},
 )

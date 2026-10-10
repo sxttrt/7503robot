@@ -1,5 +1,6 @@
 # 主程序只指定去哪里，不传地图、坐标、朝向或路线。
 # A/B/C/D 表示相应货架接近点；DROP_OFF 表示放置区。
+# scan_route 流程还发送 START_SCAN、FINAL_SCAN；仿真和实机使用相同名称。
 # 导航模块自行维护这些点位，收到取消或停止时结束当前导航。
 string target_id
 ---

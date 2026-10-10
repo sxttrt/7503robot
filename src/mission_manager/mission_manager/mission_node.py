@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from .project_paths import project_root
 import signal
 import time
 
@@ -69,7 +70,7 @@ class MissionNode(Node):
         super().__init__('mission_manager')
         for key, default in (('mode', 'simulation'), ('mission_file', ''),
                              ('interfaces_file', ''), ('targets_file', ''),
-                             ('auto_arm', False), ('log_dir', '~/7503robot_ws/runtime_logs')):
+                             ('auto_arm', False), ('log_dir', str(project_root()/'runtime_logs'))):
             self.declare_parameter(key, default)
         self.config = load_config(
             self.get_parameter('mission_file').value,
@@ -126,6 +127,12 @@ class MissionNode(Node):
             elif self.auto_arm and self.mission.state == 'IDLE':
                 self.mission.arm()
             self.mission.tick()
+            if (self.config['mode']=='simulation' and self.config['mission'].get('shutdown_on_finish',False)
+                    and self.mission.state=='FINISHED' and self.mission.stop_status=='CONFIRMED'
+                    and (self.mission.final_confirmed or self.mission.final_wait_timed_out)):
+                self.publish_status()
+                self.get_logger().info('FRAMEWORK_FINISHED: '+self.mission.reason+'，停止握手完成，结束本次运行')
+                self.closing=True
         except Exception as exc:
             self.mission.fail_safe(f'主循环异常：{exc}')
 

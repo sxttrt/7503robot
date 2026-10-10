@@ -14,3 +14,10 @@ mission_status_topic: mission/status     # std_msgs/msg/String，任务状态 JS
 # 只返回“收到命令”的队友程序不能直接接入，需改写服务端或扩展 lift.py。
 # 禁止把成功收到命令当作升降完成。
 lift_completion: response_means_completed
+
+# 导航内部接口；不改变主状态机对 NavigateToPoint / SetBool 的调用契约。
+pose_navigation_action: navigation/navigate_to_pose  # 内部 map 位姿入口，任务层不调用
+tracking_action: base/track_path                    # mission_interfaces/action/TrackPath
+navigation_stop_service: navigation/stop            # std_srvs/srv/Trigger，实测停止后响应
+navigation_status_topic: navigation/status          # healthy 为模块健康，ready 为运动就绪
+base_feedback_topic: base/feedback                  # 导航/跟踪需要的实测底盘与平台反馈

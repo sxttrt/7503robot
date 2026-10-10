@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_navigation</name><version>0.1.0</version>
+  <description>雷达定位、四连通规划和实机 TrackPath 委托；不依赖 Gazebo</description>
+  <maintainer email="team2@example.invalid">DASE7503 第二队</maintainer>
+  <license>Apache-2.0</license><buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>mission_manager</exec_depend><exec_depend>mission_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend><exec_depend>nav_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend><exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend><exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend><exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend><exec_depend>python3-yaml</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

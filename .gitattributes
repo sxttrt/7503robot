@@ -1,0 +1,4 @@
+# Keep ROS/Linux scripts runnable after Windows checkout or transfer.
+* text=auto eol=lf
+*.png binary
+*.npz binary

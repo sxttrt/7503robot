@@ -1,0 +1,41 @@
+team_number: 2
+rack_order:
+- A
+- B
+- C
+- D
+game_duration_sec: 3600.0
+tick_period_sec: 0.05
+stop_timeout_sec: 8.0
+health_timeout_sec: 2.0
+qr_max_age_sec: 1.0
+qr_future_tolerance_sec: 0.1
+qr_confirm_frames: 1
+confirm_end_qr: false
+qr_timeout_advance: true
+allow_estimated_lift: false
+timeouts:
+  WAIT_START: 15.0
+  NAV_RACK: 600.0
+  WAIT_RACK_QR: 15.0
+  DOCK_ENTER: 600.0
+  LIFT_UP: 90.0
+  NAV_END: 600.0
+  WAIT_END_QR: 5.0
+  LIFT_DOWN: 90.0
+  DOCK_EXIT: 600.0
+  NAV_START: 600.0
+  NAV_FINAL: 600.0
+  WAIT_FINAL_QR: 15.0
+retries:
+  NAV_RACK: 1
+  WAIT_RACK_QR: 2
+  WAIT_END_QR: 1
+  DOCK_ENTER: 0
+  LIFT_UP: 0
+  NAV_END: 0
+  LIFT_DOWN: 0
+  DOCK_EXIT: 0
+manual_step: false
+shutdown_on_finish: true
+scan_route: true

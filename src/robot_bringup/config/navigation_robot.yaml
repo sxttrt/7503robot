@@ -1,0 +1,51 @@
+# 这些数值只是当前仿真场地的联调模板，不是实物测量结果。
+# 未测量确认时保持 false：节点可等待数据，禁止导航接单与定位输出。
+calibration_verified: false
+# 当前算法依靠矩形场地四壁，不是任意场景 SLAM。边界内表面为 x=0/W,y=0/H。
+field_size: [3.020, 2.000]
+initial_pose: [2.720, 1.000, 3.141592653589793]
+# 雷达在 base_link 中 [x,y,z,yaw]，单位 m/rad，要求水平安装。
+laser_pose: [0.0, 0.0, 0.15, 0.0]
+frame_id: map
+odom_frame: odom
+base_frame: base_link
+laser_frame: laser
+scan_topic: /scan
+odom_topic: /odom
+localization_status_topic: lidar/localization_status
+costmap_service: global_costmap/get_costmap  # 仅供诊断，实时导航不用服务读图
+costmap_topic: global_costmap/costmap_raw  # Nav2 加锁复制后发布的完整快照
+footprint_topic: global_costmap/footprint
+# 载货包络包含车体和货物投影；轴向半长/半宽，必须现场量。
+empty_half_size: [0.12, 0.08]
+loaded_half_size: [0.12, 0.19]
+# Physical safety clearance; nominal plans additionally reserve position_tolerance.
+margin: 0.05
+# 保守联调初值；实际轮径、加减速、速度限幅由跟踪/伺服模块确认。
+max_linear_speed: 0.15
+max_angular_speed: 0.20
+travel_yaw: 3.141592653589793
+position_tolerance: 0.012
+yaw_tolerance: 0.04
+stop_linear_speed: 0.01
+stop_angular_speed: 0.01
+settle_duration_sec: 0.4
+max_duration_sec: 120.0
+feedback_timeout_sec: 0.6
+cancel_timeout_sec: 5.0
+costmap_max_age_sec: 1.5
+
+# 树莓派 ROS 路径跟踪器；输出车体 Twist，ESP32 执行轮速闭环。
+cmd_vel_topic: /cmd_vel
+tracking_frequency: 20.0
+tracking_linear_acceleration: 0.3
+tracking_angular_acceleration: 0.5
+tracking_command_timeout_sec: 0.3
+
+# 基于实测到目标距离/角度的进展；卡住或持续往复时停车并报告失败。
+tracking_progress_timeout_sec: 8.0
+tracking_progress_distance: 0.005
+tracking_progress_angle: 0.02
+
+# 场地边界内允许未知格通行；已探测障碍仍阻挡，场地外/地图外禁止。
+allow_unknown_in_field: true

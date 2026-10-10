@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+ <name>rack_simulation</name><version>0.1.0</version>
+ <description>Gazebo-only planar chassis and measured payload execution.</description>
+ <maintainer email="team2@example.com">Team 2</maintainer><license>Apache-2.0</license>
+ <buildtool_depend>ament_cmake</buildtool_depend>
+ <depend>gz_sim_vendor</depend><depend>gz_transport_vendor</depend><depend>gz_plugin_vendor</depend>
+ <export><build_type>ament_cmake</build_type></export>
+</package>

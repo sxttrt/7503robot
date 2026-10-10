@@ -1,4 +1,4 @@
-"""对准模块接口；几何计算和实际底盘移动由队友服务端实现。"""
+"""框架 Dock 客户端；进退架几何和实际移动由 robot_navigation 服务端实现。"""
 
 from mission_interfaces.action import Dock
 

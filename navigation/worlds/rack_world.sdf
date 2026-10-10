@@ -1,0 +1,1224 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="rack_world">
+    <gravity>0 0 -9.8</gravity>
+    <physics name="physics" type="ignored">
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors" />
+    <light name="sun" type="directional">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>.9 .9 .9 1</diffuse>
+      <specular>.1 .1 .1 1</specular>
+      <direction>0 0 -1</direction>
+    </light>
+    <scene>
+      <ambient>.8 .8 .8 1</ambient>
+      <background>.7 .7 .7 1</background>
+      <grid>false</grid>
+    </scene>
+    <model name="ground">
+      <static>true</static>
+      <link name="link">
+        <collision name="ground_collision">
+          <pose>1.51 1.0 -0.01 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 2.12 0.02</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0xFFFF</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="ground_visual">
+          <pose>1.51 1.0 -0.01 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 2.12 0.02</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.75 .75 .72 1</ambient>
+            <diffuse>.75 .75 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_n">
+      <static>true</static>
+      <link name="link">
+        <collision name="wall_n_collision">
+          <pose>1.51 2.03 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 0.06 0.3</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0xFFFF</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="wall_n_visual">
+          <pose>1.51 2.03 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 0.06 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.65 .67 .72 1</ambient>
+            <diffuse>.65 .67 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_s">
+      <static>true</static>
+      <link name="link">
+        <collision name="wall_s_collision">
+          <pose>1.51 -0.03 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 0.06 0.3</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0xFFFF</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="wall_s_visual">
+          <pose>1.51 -0.03 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>3.14 0.06 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.65 .67 .72 1</ambient>
+            <diffuse>.65 .67 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_w">
+      <static>true</static>
+      <link name="link">
+        <collision name="wall_w_collision">
+          <pose>-0.03 1.0 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.06 2.0 0.3</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0xFFFF</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="wall_w_visual">
+          <pose>-0.03 1.0 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.06 2.0 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.65 .67 .72 1</ambient>
+            <diffuse>.65 .67 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_e">
+      <static>true</static>
+      <link name="link">
+        <collision name="wall_e_collision">
+          <pose>3.05 1.0 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.06 2.0 0.3</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0xFFFF</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="wall_e_visual">
+          <pose>3.05 1.0 0.15 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.06 2.0 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.65 .67 .72 1</ambient>
+            <diffuse>.65 .67 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="start_zone">
+      <static>true</static>
+      <link name="link">
+        <visual name="start_zone_visual">
+          <pose>2.7199999999999998 1.0 0.001 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.6000000000000001 0.7999999999999999 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.55 .55 .3 1</ambient>
+            <diffuse>.55 .55 .3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="end_zone">
+      <static>true</static>
+      <link name="link">
+        <visual name="end_zone_visual">
+          <pose>0.4 1.0 0.001 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.8 1.4 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.3 .55 .35 1</ambient>
+            <diffuse>.3 .55 .35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="drop_a">
+      <static>true</static>
+      <link name="link">
+        <visual name="drop_a_visual">
+          <pose>0.25 0.42 0.002 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="drop_b">
+      <static>true</static>
+      <link name="link">
+        <visual name="drop_b_visual">
+          <pose>0.25 1.05 0.002 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="drop_c">
+      <static>true</static>
+      <link name="link">
+        <visual name="drop_c_visual">
+          <pose>0.55 0.7 0.002 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="drop_d">
+      <static>true</static>
+      <link name="link">
+        <visual name="drop_d_visual">
+          <pose>0.55 1.42 0.002 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="rack_a">
+      <pose>1.1360000000000001 0.54 0 0 0 0</pose>
+      <static>true</static>
+      <link name="top">
+        <pose>0 0 0.225 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.01192575</ixx>
+            <iyy>0.0024270833333333375</iyy>
+            <izz>0.014315333333333338</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="top_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.17000000000000015 0.378 0.015</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="top_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.17000000000000015 0.378 0.015</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="leg_0">
+        <pose>0 -0.17400000000000004 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.001178587500000001</iyy>
+            <izz>0.00040515000000000077</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_0_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15300000000000014 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_0_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15300000000000014 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_0_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_0</child>
+      </joint>
+      <link name="leg_1">
+        <pose>0 0.17399999999999993 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.001178587500000001</iyy>
+            <izz>0.00040515000000000077</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_1_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15300000000000014 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_1_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15300000000000014 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_1_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_1</child>
+      </joint>
+      <link name="qr">
+        <pose>0.08899999999999997 0.0 0.3325 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.02</mass>
+          <inertia>
+            <ixx>4.8e-05</ixx>
+            <iyy>2.400666666666667e-05</iyy>
+            <izz>2.400666666666667e-05</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="qr_code">
+          <geometry>
+            <plane>
+              <normal>1 0 0</normal>
+              <size>0.12 0.12</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <pbr>
+              <metal>
+                <albedo_map>../materials/qr_a.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_qr_fixed" type="fixed">
+        <parent>top</parent>
+        <child>qr</child>
+      </joint>
+    </model>
+    <model name="rack_b">
+      <pose>1.838 1.3795000000000002 0 0 0 0</pose>
+      <static>true</static>
+      <link name="top">
+        <pose>0 0 0.225 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.012115500000000001</ixx>
+            <iyy>0.0022600833333333314</iyy>
+            <izz>0.014338083333333333</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="top_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16399999999999992 0.381 0.015</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="top_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16399999999999992 0.381 0.015</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="leg_0">
+        <pose>0 -0.1755000000000002 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011515335000000001</iyy>
+            <izz>0.00037809599999999964</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_0_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.14759999999999993 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_0_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.14759999999999993 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_0_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_0</child>
+      </joint>
+      <link name="leg_1">
+        <pose>0 0.1755 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011515335000000001</iyy>
+            <izz>0.00037809599999999964</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_1_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.14759999999999993 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_1_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.14759999999999993 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_1_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_1</child>
+      </joint>
+      <link name="qr">
+        <pose>0.08599999999999985 -2.220446049250313e-16 0.3325 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.02</mass>
+          <inertia>
+            <ixx>4.8e-05</ixx>
+            <iyy>2.400666666666667e-05</iyy>
+            <izz>2.400666666666667e-05</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="qr_code">
+          <geometry>
+            <plane>
+              <normal>1 0 0</normal>
+              <size>0.12 0.12</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <pbr>
+              <metal>
+                <albedo_map>../materials/qr_b.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_qr_fixed" type="fixed">
+        <parent>top</parent>
+        <child>qr</child>
+      </joint>
+    </model>
+    <model name="rack_c">
+      <pose>1.337 1.6795 0 0 0 0</pose>
+      <static>true</static>
+      <link name="top">
+        <pose>0 0 0.225 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.012115500000000001</ixx>
+            <iyy>0.002427083333333331</iyy>
+            <izz>0.014505083333333333</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="top_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16999999999999993 0.381 0.015</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="top_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16999999999999993 0.381 0.015</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="leg_0">
+        <pose>0 -0.1755 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011785875</iyy>
+            <izz>0.00040514999999999974</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_0_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15299999999999994 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_0_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15299999999999994 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_0_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_0</child>
+      </joint>
+      <link name="leg_1">
+        <pose>0 0.1755000000000002 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011785875</iyy>
+            <izz>0.00040514999999999974</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_1_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15299999999999994 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_1_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15299999999999994 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_1_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_1</child>
+      </joint>
+      <link name="qr">
+        <pose>0.08899999999999997 0.04049999999999998 0.3325 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.02</mass>
+          <inertia>
+            <ixx>4.8e-05</ixx>
+            <iyy>2.400666666666667e-05</iyy>
+            <izz>2.400666666666667e-05</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="qr_code">
+          <geometry>
+            <plane>
+              <normal>1 0 0</normal>
+              <size>0.12 0.12</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <pbr>
+              <metal>
+                <albedo_map>../materials/qr_c.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_qr_fixed" type="fixed">
+        <parent>top</parent>
+        <child>qr</child>
+      </joint>
+    </model>
+    <model name="rack_d">
+      <pose>1.9365 0.39 0 0 0 0</pose>
+      <static>true</static>
+      <link name="top">
+        <pose>0 0 0.225 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.011925749999999997</ixx>
+            <iyy>0.0023428333333333344</iyy>
+            <izz>0.01423108333333333</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="top_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16700000000000004 0.37799999999999995 0.015</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="top_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16700000000000004 0.37799999999999995 0.015</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="leg_0">
+        <pose>0 -0.174 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011649390000000005</iyy>
+            <izz>0.00039150150000000027</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_0_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15030000000000004 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_0_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15030000000000004 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_0_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_0</child>
+      </joint>
+      <link name="leg_1">
+        <pose>0 0.17399999999999993 0.10875000000000001 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.2</mass>
+          <inertia>
+            <ixx>0.0008034375000000003</ixx>
+            <iyy>0.0011649390000000005</iyy>
+            <izz>0.00039150150000000027</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="leg_1_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15030000000000004 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0002</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="leg_1_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15030000000000004 0.03 0.21750000000000003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .52 .72 1</ambient>
+            <diffuse>.35 .52 .72 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_leg_1_fixed" type="fixed">
+        <parent>top</parent>
+        <child>leg_1</child>
+      </joint>
+      <link name="qr">
+        <pose>0.08749999999999991 0.0 0.3325 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.02</mass>
+          <inertia>
+            <ixx>4.8e-05</ixx>
+            <iyy>2.400666666666667e-05</iyy>
+            <izz>2.400666666666667e-05</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="qr_code">
+          <geometry>
+            <plane>
+              <normal>1 0 0</normal>
+              <size>0.12 0.12</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <pbr>
+              <metal>
+                <albedo_map>../materials/qr_d.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+      <joint name="top_qr_fixed" type="fixed">
+        <parent>top</parent>
+        <child>qr</child>
+      </joint>
+    </model>
+    <model name="robot" canonical_link="base_link">
+      <pose>2.72 1.0 0 0 0 3.141592653589793</pose>
+      <link name="x_slide">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.01</mass>
+          <inertia>
+            <ixx>1.666666666666667e-07</ixx>
+            <iyy>1.666666666666667e-07</iyy>
+            <izz>1.666666666666667e-07</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+      </link>
+      <link name="y_slide">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.01</mass>
+          <inertia>
+            <ixx>1.666666666666667e-07</ixx>
+            <iyy>1.666666666666667e-07</iyy>
+            <izz>1.666666666666667e-07</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+      </link>
+      <joint name="chassis_x" type="prismatic">
+        <parent>world</parent>
+        <child>x_slide</child>
+        <axis>
+          <xyz expressed_in="__model__">-1 0 0</xyz>
+          <limit>
+            <lower>-2.6</lower>
+            <upper>0.17999999999999983</upper>
+            <effort>1000</effort>
+            <velocity>1</velocity>
+          </limit>
+        </axis>
+      </joint>
+      <joint name="chassis_y" type="prismatic">
+        <parent>x_slide</parent>
+        <child>y_slide</child>
+        <axis>
+          <xyz expressed_in="__model__">0 -1 0</xyz>
+          <limit>
+            <lower>-0.92</lower>
+            <upper>0.92</upper>
+            <effort>1000</effort>
+            <velocity>1</velocity>
+          </limit>
+        </axis>
+      </joint>
+      <joint name="chassis_yaw" type="revolute">
+        <parent>y_slide</parent>
+        <child>base_link</child>
+        <axis>
+          <xyz expressed_in="__model__">0 0 1</xyz>
+          <limit>
+            <lower>-0.06</lower>
+            <upper>0.5835987755982988</upper>
+            <effort>1000</effort>
+            <velocity>1</velocity>
+          </limit>
+        </axis>
+      </joint>
+      <plugin filename="librack_hybrid_actuator.so" name="rack_simulation::HybridActuator">
+        <allow_scan_rotation>true</allow_scan_rotation>
+        <field_x>3.02</field_x>
+        <field_y>2.0</field_y>
+        <half_x>0.12</half_x>
+        <half_y>0.08</half_y>
+        <initial_yaw>3.141592653589793</initial_yaw>
+        <platform_top>0.18</platform_top>
+        <payload_bottom>0.21750000000000003</payload_bottom>
+        <lift_up>0.3</lift_up>
+        <lift_upper>0.4</lift_upper>
+        <lift_tolerance>0.008</lift_tolerance>
+      </plugin>
+      <link name="base_link">
+        <gravity>false</gravity>
+        <inertial>
+          <mass>5.0</mass>
+          <inertia>
+            <ixx>0.012708333333333335</ixx>
+            <iyy>0.026041666666666668</iyy>
+            <izz>0.034666666666666665</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="chassis_collision">
+          <pose>0 0 0.04 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.24 0.16 0.07</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0001</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="chassis_visual">
+          <pose>0 0 0.04 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.24 0.16 0.07</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.35 .35 .4 1</ambient>
+            <diffuse>.35 .35 .4 1</diffuse>
+          </material>
+        </visual>
+        <visual name="ms200_housing_visual">
+          <pose>0 0 0.1275 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.045 0.045 0.025</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.08 .08 .08 1</ambient>
+            <diffuse>.08 .08 .08 1</diffuse>
+          </material>
+        </visual>
+        <visual name="ms200_cable_visual">
+          <pose>0.035 -0.024 0.112 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.055 0.004 0.004</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.04 .04 .04 1</ambient>
+            <diffuse>.04 .04 .04 1</diffuse>
+          </material>
+        </visual>
+        <visual name="ms200_adapter_visual">
+          <pose>0.065 -0.024 0.108 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.03 0.022 0.003</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.1 .4 .15 1</ambient>
+            <diffuse>.1 .4 .15 1</diffuse>
+          </material>
+        </visual>
+        <sensor name="camera" type="camera">
+          <pose>0.11 0.0 0.32 0 -0.15 0</pose>
+          <topic>/camera</topic>
+          <update_rate>15</update_rate>
+          <always_on>1</always_on>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>RGB_INT8</format>
+            </image>
+            <clip>
+              <near>0.05</near>
+              <far>10</far>
+            </clip>
+          </camera>
+        </sensor>
+        <sensor name="ms200" type="gpu_lidar">
+          <pose>0 0 0.15 0 0 0</pose>
+          <topic>/scan</topic>
+          <update_rate>10</update_rate>
+          <always_on>1</always_on>
+          <visualize>false</visualize>
+          <ray>
+            <scan>
+              <horizontal>
+                <samples>720</samples>
+                <resolution>1</resolution>
+                <min_angle>-3.14159265</min_angle>
+                <max_angle>3.14159265</max_angle>
+              </horizontal>
+            </scan>
+            <range>
+              <min>0.05</min>
+              <max>8.0</max>
+              <resolution>0.01</resolution>
+            </range>
+            <noise>
+              <type>gaussian</type>
+              <mean>0</mean>
+              <stddev>0.005</stddev>
+            </noise>
+          </ray>
+        </sensor>
+      </link>
+      <link name="lift_platform">
+        <pose>0 0 0.16999999999999998 0 0 0</pose>
+        <gravity>false</gravity>
+        <inertial>
+          <mass>0.5</mass>
+          <inertia>
+            <ixx>0.0008333333333333335</ixx>
+            <iyy>0.0016833333333333336</iyy>
+            <izz>0.002483333333333334</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="lift_platform_collision">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.14 0.02</size>
+            </box>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_bitmask>0x0004</collide_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="lift_platform_visual">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 0.14 0.02</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>.6 .6 .6 1</ambient>
+            <diffuse>.6 .6 .6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="lift_joint" type="prismatic">
+        <parent>base_link</parent>
+        <child>lift_platform</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>0.0</lower>
+            <upper>0.4</upper>
+            <effort>100</effort>
+          </limit>
+        </axis>
+      </joint>
+      <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+        <joint_name>lift_joint</joint_name>
+        <topic>/simulation/lift_setpoint</topic>
+        <p_gain>100.0</p_gain>
+        <i_gain>0</i_gain>
+        <d_gain>14.142135623730951</d_gain>
+        <i_max>10</i_max>
+        <i_min>-10</i_min>
+        <initial_position>0.0</initial_position>
+      </plugin>
+      <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher" />
+    </model>
+  </world>
+</sdf>
