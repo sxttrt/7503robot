@@ -1,0 +1,45 @@
+相机 QR 程序包
+
+1. pi_camera_qr.py：当前 Raspberry Pi OS 桌面直接采图识别，不依赖 ROS。
+2. qr_node.py：ROS 2 识别节点，订阅 /camera/image_raw；用于团队 Jazzy 环境，需先运行 camera_ros。
+
+当前先运行第一份程序。以下命令在树莓派终端执行：
+
+sudo apt update
+sudo apt install -y python3-picamera2 python3-opencv
+rpicam-hello --list-cameras
+
+正常应枚举出 imx708。没有相机时先关机断电检查接线。
+用树莓派桌面上的终端进入项目文件夹：
+
+cd ~/7503robot_ws/Camera
+python3 pi_camera_qr.py
+
+预览窗口中按 q 退出，按 s 保存当前画面，Ctrl+C 也可停止。
+通过 SSH 启动时使用：
+python3 pi_camera_qr.py --no-preview
+
+若负载偏高，可用：
+python3 pi_camera_qr.py --width 640 --height 480 --hz 5
+
+先测试 START，再测试 END 和四个货架二维码。
+有效格式的码会保存截图；完整随机后缀会保留。
+格式正确不等于匹配本组，正式任务需核对本组完整字符串。
+
+输出：qr_evidence/每次运行时间/
+- PNG：自动和手动截图。
+- JSON：截图对应的识别结果。
+- latest.json：最新结果；没看到码时 detections 为空。
+- detections.jsonl：有识别结果的帧日志。
+程序退出后 latest.json 会保留旧值；任何消费者必须检查时间戳。
+
+本程序仅采图识别，不控制电机或升降，不直接输出货架距离和姿态。
+示例识别偏差是图像位置，不是厘米距离。
+
+从仓库获取（树莓派终端）：
+git clone https://github.com/sxttrt/7503robot.git ~/7503robot_ws
+cd ~/7503robot_ws/Camera
+若已有仓库，在仓库根目录执行 git pull 后进入 Camera。
+GTK 界面、ROS 话题重映射、依赖平台和测试要求见同目录 README.md。
+
+程序在开发电脑通过了语法检查，尚未进行树莓派相机实测。

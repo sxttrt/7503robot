@@ -31,7 +31,7 @@
 |---|---|---|
 | 主状态机与任务流程 | [state_machine.py](src/mission_manager/mission_manager/state_machine.py)、[mission_node.py](src/mission_manager/mission_manager/mission_node.py) | 维护顺序、计时、重试、失败处理和日志 |
 | LiDAR、定位与导航 | [navigation.py](src/mission_manager/mission_manager/adapters/navigation.py)、[接口说明](docs/给队友看/模块接口说明.md) | 接收点位名，自己管理坐标和导航，返回成功／失败，支持取消 |
-| 相机与 QR 识别 | [qr.py](src/mission_manager/mission_manager/adapters/qr.py)、[实机目标配置](src/robot_bringup/config/targets_robot.yaml) | 发布完整 QR、图像时间戳和当前识别结果 |
+| 相机与 QR 识别 | [Camera 程序与使用说明](Camera/README.md)、[qr.py](src/mission_manager/mission_manager/adapters/qr.py)、[实机目标配置](src/robot_bringup/config/targets_robot.yaml) | 独立相机程序和 ROS 原型已入库；按接口发布完整 QR、图像时间戳和当前识别结果，待实机联调 |
 | 局部对准、进入与退出货架 | [Dock.action](src/mission_interfaces/action/Dock.action)、[导航进退架](src/robot_navigation/robot_navigation/docking.py) | 本包已实现；导航负责人填写实测架口几何，底盘组执行速度与反馈 |
 | 底盘、ESP32 通信与升降 | [lift.py](src/mission_manager/mission_manager/adapters/lift.py)、[safety.py](src/mission_manager/mission_manager/adapters/safety.py)、[固件说明](firmware/README.md) | 实现升降完成反馈、简单在线状态和停止 |
 | 机械结构与升降机构 | [接口说明](docs/给队友看/模块接口说明.md)中的对准与升降部分 | 提供安装尺寸、可托举条件、升降行程和退出条件 |

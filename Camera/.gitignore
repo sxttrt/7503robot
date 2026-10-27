@@ -1,0 +1,5 @@
+# Generated camera output; keep sample QR images in demo_qr/ and testdata/.
+qr_evidence/
+test_capture.png
+postreboot_report.txt
+camera_qr.zip
