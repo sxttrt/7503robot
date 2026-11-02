@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")/.."
-PROJECT="$PWD"
+PROJECT="$(pwd -P)"
 if [[ ! -f install/setup.bash || ! -f .build-root || "$(cat .build-root)" != "$PROJECT" ]]; then
   echo '请先在当前项目执行 bash scripts/build.sh --robot'; exit 1
 fi

@@ -96,6 +96,23 @@ ros2 launch robot_bringup simulation.launch.py scenario:=navigation_fail_once
 
 上传源码、配置、文档和测试即可；`build/`、`install/`、`log/`、运行日志和缓存已由 `.gitignore` 排除。`firmware/README.md` 只是 ESP32 固件目录说明，项目入口是当前这份 README。
 
+整目录复制或压缩仍会带上被 Git 忽略的本机构建文件。不要在新电脑直接 source 复制来的 install/setup.bash；源码新增配置后也需要重新构建。换电脑、换路径或怀疑安装副本过旧时，先停止正在运行的程序，在新终端、项目根目录执行：
+
+```bash
+bash scripts/build.sh --clean          # 联合仿真：构建全部包
+# 仅部署实机时使用：bash scripts/build.sh --clean --robot
+```
+
+`--clean` 将旧 build/install 移到 .build_cache_backups，再从 src 重建；它保留日志、源码和运行记录，不用于释放磁盘空间。脚本清除继承的旧 ROS overlay 路径并重新加载 /opt/ros/jazzy，构建成功后才写入当前路径的 .build-root。构建失败时启动脚本会继续拒绝运行，不要手工改标记或修改旧 install 来绕过检查。
+
+优先通过 git clone 或 GitHub 的 Download ZIP 分发源码。在已提交且工作区干净的 Git 克隆里，也可以运行以下命令，生成只含已提交源码的 ZIP，默认放在项目目录旁边：
+
+```bash
+bash scripts/export_source.sh
+```
+
+源码包不含 build/install/.build-root、日志、备份或 Git 历史。解压后必须在目标电脑构建。未提交的实测配置需先妥善保存，导出脚本会拒绝遗漏这些修改。
+
 ## 维护记录（自己看）
 
 `docs/自己的记录/` 保存主状态机维护者的测试、构建和审查记录，队友接入模块时无需逐篇阅读。

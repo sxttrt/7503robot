@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")/.."
-FRAMEWORK="$PWD"
+FRAMEWORK="$(pwd -P)"
 if [[ ! -f "$FRAMEWORK/install/setup.bash" || ! -f "$FRAMEWORK/.build-root" || "$(cat "$FRAMEWORK/.build-root")" != "$FRAMEWORK" ]]; then
   echo "首次使用或项目位置已改变：请在此目录运行 bash scripts/build.sh"; exit 2
 fi
