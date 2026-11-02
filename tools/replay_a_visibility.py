@@ -3,7 +3,7 @@ import sys, math
 import numpy as np
 from types import SimpleNamespace as NS
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'navigation/scripts'))
+sys.path.insert(0,str(ROOT/'src/rack_simulation/navigation/scripts'))
 import scene
 from grid_planner import GridMap, Planner
 

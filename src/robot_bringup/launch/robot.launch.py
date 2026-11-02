@@ -19,7 +19,7 @@ def generate_launch_description():
         ('targets_file',str(folder/'targets_robot.yaml')),
         ('mission_file',str(folder/'mission_robot.yaml')),
         ('interfaces_file',str(folder/'interfaces.yaml')),
-        ('navigation_file',str(folder/'navigation_robot.yaml')),
+        ('navigation_file',str(Path(get_package_share_directory('robot_navigation'))/'config/navigation_robot.yaml')),
         ('points_file',str(folder/'navigation_points_robot.yaml')),
         ('costmap_file',str(folder/'costmap_robot.yaml')),
         ('domain_id','42'),('namespace','team2/robot'),

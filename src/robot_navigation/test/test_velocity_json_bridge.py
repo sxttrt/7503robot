@@ -102,7 +102,7 @@ def test_invalid_command_clears_previous_fresh_command_and_recovers_only_on_new_
 
 def test_config_defaults_preserve_existing_config_files(tmp_path):
     import yaml
-    cfg=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')
+    cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     cfg.pop('cmd_vel_json_topic')
     path=tmp_path/'old.yaml';path.write_text(yaml.safe_dump(cfg))
     assert load_settings(path)['cmd_vel_json_topic']=='base/cmd_vel_json'
@@ -112,7 +112,7 @@ def test_config_defaults_preserve_existing_config_files(tmp_path):
 @pytest.mark.parametrize('bad',[None,'',False,' '])
 def test_invalid_topic_configuration_cannot_start_bridge(name,bad,tmp_path):
     import yaml
-    cfg=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml');cfg[name]=bad
+    cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml');cfg[name]=bad
     path=tmp_path/'invalid.yaml';path.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError,match=name):load_settings(path)
 
@@ -120,7 +120,7 @@ def test_invalid_topic_configuration_cannot_start_bridge(name,bad,tmp_path):
 def test_real_and_hybrid_launch_include_same_converter():
     # Construct only launch descriptions, not nodes/executors. ROS launch Node actions
     # expand to the same registered console executable in both environments.
-    for filename in ('robot.launch.py','rack_hybrid.launch.py'):
+    for filename in ('robot.launch.py','rack_hybrid_backend.launch.py'):
         path=project_root()/'src/robot_bringup/launch'/filename
         spec=importlib.util.spec_from_file_location('velocity_launch_'+filename,path)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)

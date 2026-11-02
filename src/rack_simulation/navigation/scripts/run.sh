@@ -23,7 +23,7 @@ while kill -0 "$SUPERVISOR" 2>/dev/null; do
     echo "日志: $RUN"
     if [[ " $* " == *" --framework "* ]]; then
       echo '框架自动推进；识别阶段等待 /team2/sim/qr/detections，不再使用 /rack/next。'
-      echo '联调时在框架根目录执行 python3 scripts/publish_qr_result.py START（对应 WAIT_START）。'
+      echo '联调时执行 ros2 run mission_manager publish_qr_result START（对应 WAIT_START）。'
     else
       echo '历史独立入口：另一个终端 source /opt/ros/jazzy/setup.bash，再发布:'
       echo 'ros2 topic pub --once /rack/next std_msgs/msg/Bool "{data: true}"'

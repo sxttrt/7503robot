@@ -16,6 +16,41 @@
 
 上游原点位接口版曾在树莓派构建并通过147项测试，历史记录见 [构建验证记录（自己看）](docs/自己的记录/构建验证记录（自己看）.md)。2026-10-10 的导航接入版本在 WSL 完成5包构建，以及511项框架/导航离线测试、61项共享算法测试和1项执行器核心测试；2026-10-26 加入速度 JSON 转换后，4个实机包构建成功，557项框架/导航离线测试通过。未运行此次 Gazebo 全流程或串口/实物验收。
 
+## 部署分工与依赖安装
+
+**电脑运行 Gazebo，树莓派只运行实机上位机逻辑。树莓派可以只复制 src 下的 mission_interfaces、mission_manager、robot_navigation、robot_bringup 四个包并重新构建，不需要外层项目标记、scripts 或仿真包。**
+
+完整依赖表、首次 rosdep 初始化、只复制 src 的步骤和双机联调见 [部署与依赖](docs/部署与依赖.md)。Ubuntu 24.04 + ROS 2 Jazzy 为当前支持环境；电脑仿真使用 Gazebo Harmonic（gz-sim8），树莓派不安装 Gazebo。共享算法已放入 robot_navigation/algorithms，仿真资源和执行桥位于 rack_simulation 包内。
+
+| 环节 | 电脑 | 树莓派 |
+|---|---|---|
+| 第一阶段：联合验证 | Gazebo、雷达/时钟桥接、虚拟执行反馈、评估 | 定位、costmap、规划/进退架、跟踪、JSON、状态机 |
+| 第二阶段：真实雷达 | 可用于观察数据 | 接真实 /scan，检查扫描方向、遮挡和定位 |
+| 第三阶段：实物场景 | 可用于监控日志 | 接 ESP32、平台与 QR 模块，实际低速联调 |
+
+已经安装 ROS Jazzy、构建工具并完成 rosdep 初始化后，树莓派在工作区执行：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+rosdep install --from-paths src/mission_interfaces src/mission_manager src/robot_navigation src/robot_bringup --ignore-src --rosdistro jazzy -y
+colcon build --base-paths src --symlink-install --packages-select mission_interfaces mission_manager robot_navigation robot_bringup
+source install/setup.bash
+ros2 run robot_navigation check_dependencies --profile robot
+```
+
+电脑构建全部五包时，使用 rosdep install --from-paths src --ignore-src --rosdistro jazzy -y，再执行 bash scripts/build.sh 或标准 colcon build。qrcode/Pillow/OpenCV、ros_gz、slam_toolbox 和 Nav2 依赖已纳入包声明，不再依赖历史文档补装。
+
+双方 source 各自安装环境后，设 ROS_DOMAIN_ID=0、RMW_IMPLEMENTATION=rmw_fastrtps_cpp、ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET，确认网络互通，然后分别启动：
+
+```bash
+# 电脑：只运行仿真前端
+ros2 run rack_simulation run_simulation --hybrid --remote-backend
+# 树莓派：运行实际定位导航代码，接收电脑的仿真输入
+ros2 launch robot_bringup rack_hybrid_backend.launch.py
+```
+
+需要电脑独自运行两端时保留 bash scripts/run_rack_hybrid.sh。真实雷达阶段改用 ros2 launch robot_bringup robot.launch.py，默认域42、真实时钟；完整任务加 start_mission:=true。真实 QR、点位和标定标记仍保留待实测，不能把仿真参数当作实机标定。
+
 ## 第一次来，先看什么？
 
 1. 想知道机器人怎么完成任务：看 [任务流程说明](docs/给队友看/任务流程说明.md)。
@@ -45,22 +80,24 @@
 
 如果只能上传少量文件，就提供：**接口说明＋对应适配文件＋需要用到的动作定义／配置＋你自己的模块代码**。
 
-## 下载并运行模拟
+## 下载并运行框架 mock
 
 **不需要树莓派或机器人硬件。**完整模拟需要 Ubuntu 24.04＋ROS 2 Jazzy；Windows 上可先用 VS Code 阅读和修改，运行需准备相应 ROS 环境。
 
 已经安装 ROS 2 Jazzy 并配置软件源后，在 Ubuntu 终端执行：
 
 ```bash
-# 安装任务框架的构建和测试依赖；真实导航依赖由对应模块自行准备。
+# 安装构建工具；ROS Jazzy 本身须先按官方方式安装。
 sudo apt update
-sudo apt install -y git python3-colcon-common-extensions python3-yaml python3-pytest ros-jazzy-rosidl-default-generators ros-jazzy-rosidl-default-runtime
+sudo apt install -y git build-essential cmake python3-colcon-common-extensions python3-rosdep
 
 # 下载到固定工作区名称，便于按说明运行。
 git clone https://github.com/sxttrt/7503robot.git ~/7503robot_ws
 cd ~/7503robot_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install
+# rosdep 尚未初始化时先 sudo rosdep init，然后 rosdep update --rosdistro jazzy。
+rosdep install --from-paths src/mission_interfaces src/mission_manager src/robot_navigation src/robot_bringup --ignore-src --rosdistro jazzy -y
+bash scripts/build.sh --robot
 source install/setup.bash
 
 # 自动生成模拟 START，依次执行 A、B、C、D。
@@ -79,7 +116,7 @@ ros2 launch robot_bringup simulation.launch.py scenario:=navigation_fail_once
 
 - 第二队四个货架的完整 QR，填写 [targets_robot.yaml](src/robot_bringup/config/targets_robot.yaml)。
 - 导航模块自行准备 A/B/C/D/DROP_OFF 五个点位；坐标、地图和朝向不再交给主程序配置。
-- 标定已接入的定位导航，并接入真实 QR、对准、升降、底盘通信、健康状态和停止模块。
+- 标定已接入的定位导航与进退架，并接入真实 QR、升降、底盘通信、健康状态和停止模块。
 - 模块按 [接口说明](docs/给队友看/模块接口说明.md)报告实际完成结果。升降响应只代表“收到命令”的程序，需要先改造。
 
 `SIMTEAM2` 仅是模拟后缀，不能用于实机。当前实机 QR 配置为空，启动时会提示缺失项。
@@ -92,7 +129,7 @@ ros2 launch robot_bringup simulation.launch.py scenario:=navigation_fail_once
 
 **支持单模块测试，不用等完整机器人做好。**具体操作见 [单模块测试说明](docs/给队友看/单模块测试说明.md)。
 
-运行日志保存在 `~/7503robot_ws/runtime_logs/`，每次运行记录状态转换、目标货架、剩余时间、重试和故障原因。
+直接使用 ROS 启动入口时，日志默认保存在 `~/.ros/7503robot/runtime_logs/`；完整仓库的 run_*.sh 将日志放在本项目 runtime_logs。可用 ROBOT_RUNTIME_DIR 指定路径。每次运行记录状态转换、货架、剩余时间和故障原因。
 
 上传源码、配置、文档和测试即可；`build/`、`install/`、`log/`、运行日志和缓存已由 `.gitignore` 排除。`firmware/README.md` 只是 ESP32 固件目录说明，项目入口是当前这份 README。
 
@@ -130,10 +167,11 @@ bash scripts/export_source.sh
 |---|---|
 | 雷达定位、导航、进退架、树莓派速度跟踪 | `src/robot_navigation/robot_navigation/` |
 | Twist 转 ESP32 速度 JSON | `src/robot_navigation/robot_navigation/velocity_json_bridge.py` |
-| 导航点位与实测参数 | `src/robot_bringup/config/navigation_points_robot.yaml`、`navigation_robot.yaml` |
+| 导航点位与实测参数 | `src/robot_bringup/config/navigation_points_robot.yaml`、`src/robot_navigation/config/navigation_robot.yaml` |
 | 点位动作与内部轨迹动作 | `src/mission_interfaces/action/NavigateToPoint.action`、`TrackPath.action` |
-| 场景与共享规划算法 | `navigation/scripts/scene.py`、`grid_planner.py` |
-| Gazebo 举降/反馈代理 | `src/mission_manager/mission_manager/hybrid_execution.py`；联合仿真的 Dock 由实机导航提供 |
+| 电脑仿真场景 | `src/rack_simulation/navigation/scripts/scene.py` |
+| 共享定位与规划算法 | `src/robot_navigation/robot_navigation/algorithms/` |
+| Gazebo 举降/反馈代理 | `src/rack_simulation/rack_simulation/hybrid_execution.py`；联合仿真的 Dock 由实机导航提供 |
 | 一键启动与底盘慢速测试 | `scripts/` |
 
 数据管线：`/scan LaserScan → 雷达位姿 /odom 与 TF → Nav2 costmap → 点位名解析 → 4 连通 Path → TrackPath → 树莓派跟踪器 → /cmd_vel Twist → velocity_json_bridge → base/cmd_vel_json → 队友 ESP32 通信与麦轮伺服`。定位不使用 Gazebo 真值或 IMU；仿真真值仅用于执行反馈与误差评估。

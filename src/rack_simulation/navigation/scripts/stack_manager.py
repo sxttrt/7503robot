@@ -77,8 +77,10 @@ class Stack:
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--run-dir',required=True,type=Path)
     parser.add_argument('--headless',action='store_true')
-    parser.add_argument('--framework',type=Path);parser.add_argument('--hybrid',action='store_true');args=parser.parse_args()
+    parser.add_argument('--framework',type=Path);parser.add_argument('--hybrid',action='store_true')
+    parser.add_argument('--remote-backend',action='store_true');args=parser.parse_args()
     if args.hybrid and not args.framework:parser.error('--hybrid requires --framework')
+    if args.remote_backend and not args.hybrid:parser.error('--remote-backend requires --hybrid')
     ROOT.joinpath('log').mkdir(exist_ok=True)
     lock=ROOT.joinpath('log/stack.lock').open('a')
     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -123,7 +125,9 @@ def main():
         stack.say('[6/6] framework (自动动作，等待框架QR结果)' if args.framework else '[6/6] legacy mission (一次触发一个目标，到位自动动作)')
         if args.framework:
             stack.say('使用 7503 mission_manager + framework_execution；不启动旧任务循环')
-            stack.start('mission',['ros2','launch','robot_bringup','rack_hybrid.launch.py' if args.hybrid else 'rack_simulation.launch.py'])
+            launch=('rack_hybrid_frontend.launch.py' if args.remote_backend else
+                    'rack_hybrid.launch.py' if args.hybrid else 'rack_simulation.launch.py')
+            stack.start('mission',['ros2','launch','robot_bringup',launch])
         else:stack.start('mission',[sys.executable,'scripts/mission_v3.py','--ros-args','-p','use_sim_time:=true'])
         mission_log=stack.run/'mission.log'
         startup_offset=0
@@ -133,11 +137,15 @@ def main():
             for line in text[startup_offset:].splitlines():
                 if 'STARTUP_WAIT:' in line or 'FRAMEWORK_STARTUP_FAILED:' in line:stack.say(line)
             startup_offset=len(text)
+            if args.remote_backend:return 'HYBRID_FRONTEND_STARTED:' in text
             if args.framework:
                 return ('HYBRID_ADAPTER_READY:' if args.hybrid else 'FRAMEWORK_READY:') in text and 'IDLE → NAV_START' in text
             return '等待开关:' in text
         stack.wait_for(mission_ready,120,'mission/map/TF/framework')
-        stack.ready=True;stack.run.joinpath('status').write_text('READY\n');stack.say('就绪：数据、地图和接口已确认；框架按识别结果自动推进' if args.framework else '就绪：已确认数据、地图、足迹和第一条路径')
+        stack.ready=True;stack.run.joinpath('status').write_text('READY\n')
+        stack.say('电脑仿真端已启动；导航和任务状态请在树莓派端检查' if args.remote_backend else
+                  '就绪：数据、地图和接口已确认；框架按识别结果自动推进' if args.framework else
+                  '就绪：已确认数据、地图、足迹和第一条路径')
         while stack.alive():
             mission_text=mission_log.read_text(errors='replace')
             if args.framework and 'FRAMEWORK_FINISHED:' in mission_text:

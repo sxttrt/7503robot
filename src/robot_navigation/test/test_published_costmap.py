@@ -64,7 +64,7 @@ def test_published_source_age_expires_even_when_receipt_is_fresh():
     assert not json.loads(packets[-1].data)['healthy']
 
 def footprint_node():
-    sends=[];subs=[1];n=NS(cfg=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml'),
+    sends=[];subs=[1];n=NS(cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml'),
         base=measured_health(),payload_stamp=math.inf,last_footprint=None,now=lambda:5.,
         footprint_pub=NS(publish=sends.append,get_subscription_count=lambda:subs[0]))
     n.cfg['calibration_verified']=True
@@ -94,7 +94,7 @@ def test_unknown_lift_does_not_publish_empty_footprint():
 
 def test_transport_and_full_publication_configuration():
     import yaml
-    root=project_root();real=load_settings(root/'src/robot_bringup/config/navigation_robot.yaml')
+    root=project_root();real=load_settings(root/'src/robot_navigation/config/navigation_robot.yaml')
     hybrid=load_settings(root/'src/robot_bringup/config/navigation_hybrid.yaml')
     assert real['costmap_topic']=='global_costmap/costmap_raw'
     assert hybrid['costmap_topic']=='/global_costmap/costmap_raw'

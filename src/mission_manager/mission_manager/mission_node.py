@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from .project_paths import project_root
+from .project_paths import runtime_directory
 import signal
 import time
 
@@ -70,7 +70,7 @@ class MissionNode(Node):
         super().__init__('mission_manager')
         for key, default in (('mode', 'simulation'), ('mission_file', ''),
                              ('interfaces_file', ''), ('targets_file', ''),
-                             ('auto_arm', False), ('log_dir', str(project_root()/'runtime_logs'))):
+                             ('auto_arm', False), ('log_dir', str(runtime_directory()))):
             self.declare_parameter(key, default)
         self.config = load_config(
             self.get_parameter('mission_file').value,

@@ -10,7 +10,5 @@ if [[ ! -f install/rack_simulation/lib/librack_hybrid_actuator.so ]]; then
 fi
 source /opt/ros/jazzy/setup.bash
 source "$PROJECT/install/setup.bash"
-export ROBOT_PROJECT_ROOT="$PROJECT"
-python3 tools/generate_rack_targets.py
-python3 tools/generate_hybrid_config.py
-exec bash navigation/scripts/run.sh --framework "$PROJECT" --hybrid "$@"
+export ROBOT_RUNTIME_DIR="${ROBOT_RUNTIME_DIR:-$PROJECT/runtime_logs}"
+exec ros2 run rack_simulation run_simulation --hybrid "$@"

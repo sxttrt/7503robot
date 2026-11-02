@@ -40,7 +40,7 @@ def test_stop_requires_current_real_evidence(changes):
     assert not measured_base_stopped(health(**changes),10.,.6)
 
 def test_planar_model_has_no_free_z_roll_pitch_dof():
-    world=ET.parse(project_root()/'navigation/worlds/rack_world.sdf').getroot().find('world')
+    world=ET.parse(project_root()/'src/rack_simulation/navigation/worlds/rack_world.sdf').getroot().find('world')
     robot=world.find("model[@name='robot']")
     assert robot.attrib['canonical_link']=='base_link'
     chain=[('chassis_x','world','x_slide','prismatic','-1 0 0'),
@@ -56,7 +56,7 @@ def test_planar_model_has_no_free_z_roll_pitch_dof():
     assert not robot.findall("plugin[@name='gz::sim::systems::PosePublisher']")
     for name in ('a','b','c','d'):
         assert world.find(f"model[@name='rack_{name}']").findtext('static')=='true'
-    text=(project_root()/'navigation/scripts/kinematic_driver.py').read_text()
+    text=(project_root()/'src/rack_simulation/navigation/scripts/kinematic_driver.py').read_text()
     assert 'SetEntityPose' not in text and 'teleport(' not in text
 
 def test_handoff_waits_for_new_idle_feedback_before_motion_dispatch():
@@ -102,7 +102,7 @@ def test_tracker_stop_uses_measured_base_and_radar_while_cargo_unknown():
 
 def driver_double():
     # Load methods without initializing rclpy.Node.
-    p=project_root()/'navigation/scripts/kinematic_driver.py';tree=ast.parse(p.read_text())
+    p=project_root()/'src/rack_simulation/navigation/scripts/kinematic_driver.py';tree=ast.parse(p.read_text())
     cls=next(x for x in tree.body if isinstance(x,ast.ClassDef));cls.bases=[]
     cls.body=[x for x in cls.body if not isinstance(x,ast.FunctionDef) or x.name!='__init__']
     ns=dict(time=time,math=math,json=json,scene=__import__('scene'),

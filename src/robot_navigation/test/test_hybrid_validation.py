@@ -37,7 +37,7 @@ def test_error_statistics_use_wrapped_yaw():
 
 def test_hybrid_geometry_does_not_change_real_calibration():
     cfg=load_settings(ROOT/'src/robot_bringup/config/navigation_hybrid.yaml')
-    real=load_settings(ROOT/'src/robot_bringup/config/navigation_robot.yaml')
+    real=load_settings(ROOT/'src/robot_navigation/config/navigation_robot.yaml')
     assert cfg['calibration_verified'] is True and real['calibration_verified'] is False
     assert cfg['localization_status_topic']=='/lidar/localization_status'
     assert cfg['costmap_service']=='/global_costmap/get_costmap'
@@ -52,17 +52,17 @@ def test_hybrid_uses_real_costmap_unknown_policy():
     assert params['track_unknown_space']==real['global_costmap']['global_costmap']['ros__parameters']['track_unknown_space']
 
 def test_launch_has_one_real_control_chain_and_no_old_localizer():
-    path=ROOT/'src/robot_bringup/launch/rack_hybrid.launch.py'
+    path=ROOT/'src/robot_bringup/launch/rack_hybrid_backend.launch.py'
     spec=importlib.util.spec_from_file_location('hybrid_launch',path);module=importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module);ld=module.generate_launch_description()
-    assert len(ld.entities)==9
+    assert len(ld.entities)==10
     text=path.read_text()
     assert "('lidar_localization','navigation_server','path_tracker')" in text
-    assert "'provide_navigation':False" in text and "'use_sim_time':True" in text
-    assert 'framework_execution' not in text and 'mock_modules' not in text
+    assert "'use_sim_time':True" in text
+    assert 'framework_execution' not in text and 'mock_modules' not in text and "package='rack_simulation'" not in text
 
 def test_supervisor_hybrid_branch_starts_no_duplicate_tf_or_localizer():
-    path=ROOT/'navigation/scripts/stack_manager.py'
+    path=ROOT/'src/rack_simulation/navigation/scripts/stack_manager.py'
     tree=ast.parse(path.read_text())
     branches=[n for n in ast.walk(tree) if isinstance(n,ast.If) and ast.unparse(n.test)=='args.hybrid']
     assert branches
@@ -73,7 +73,7 @@ def test_supervisor_hybrid_branch_starts_no_duplicate_tf_or_localizer():
 
 def test_adapter_not_another_footprint_controller():
     n=NS();assert HybridExecution.set_footprint(n) is True
-    text=(ROOT/'src/mission_manager/mission_manager/framework_execution.py').read_text()
+    text=(ROOT/'src/rack_simulation/rack_simulation/framework_execution.py').read_text()
     assert "if self.get_parameter('provide_navigation').value:" in text
 
 def test_adapter_stop_aborts_own_lift_before_nav_wait():

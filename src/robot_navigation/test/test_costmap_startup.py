@@ -24,7 +24,7 @@ from robot_navigation.navigation import NavigationServer
 
 
 def config():
-    cfg = load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')
+    cfg = load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     cfg['calibration_verified'] = True
     return cfg
 

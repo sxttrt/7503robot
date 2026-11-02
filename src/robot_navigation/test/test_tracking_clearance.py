@@ -14,7 +14,7 @@ def inputs():
     message=NS(header=NS(frame_id='map'),metadata=NS(resolution=float(d['resolution']),size_x=w,size_y=h,
         origin=NS(position=NS(x=float(d['origin'][0]),y=float(d['origin'][1])),
                   orientation=NS(x=0.,y=0.,z=0.,w=1.))),data=d['costs'].reshape(-1).tolist())
-    cfg=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')
+    cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     return cfg,message
 
 def test_old_nominal_d_lane_passes_but_permitted_offset_collides():

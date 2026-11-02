@@ -5,7 +5,7 @@
   <description>固定 A 至 D 搬运顺序的任务状态机、接口适配与模拟模块</description>
   <maintainer email="team2@example.invalid">DASE7503 第二队</maintainer>
   <license>Apache-2.0</license>
-  <buildtool_depend>ament_python</buildtool_depend>
+  <buildtool_depend>python3-setuptools</buildtool_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>action_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
@@ -18,8 +18,5 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>ros_gz_interfaces</exec_depend>
-  <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-opencv</exec_depend>
   <export><build_type>ament_python</build_type></export>
 </package>

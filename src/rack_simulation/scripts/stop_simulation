@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+from rack_simulation.workspace import stop
+if __name__ == '__main__':
+    stop()

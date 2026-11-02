@@ -12,10 +12,11 @@ from nav_msgs.msg import Odometry,Path
 from std_msgs.msg import String
 from .core import pose_values,route_distance
 from .evaluation_core import TruthSeries,ErrorStats
+from mission_manager.project_paths import runtime_directory
 
 class HybridEvaluator(Node):
     def __init__(self):
-        super().__init__('hybrid_evaluator');self.declare_parameter('csv_file','hybrid_metrics.csv')
+        super().__init__('hybrid_evaluator');self.declare_parameter('csv_file',str(runtime_directory()/'hybrid_metrics.csv'))
         filename=FilePath(self.get_parameter('csv_file').value);filename.parent.mkdir(parents=True,exist_ok=True)
         self.stream=filename.open('w',encoding='utf-8',newline='')
         columns=('stamp','estimate_x','estimate_y','estimate_yaw','truth_x','truth_y','truth_yaw',

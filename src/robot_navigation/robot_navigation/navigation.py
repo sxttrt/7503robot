@@ -11,7 +11,7 @@ import time
 import uuid
 from pathlib import Path
 import numpy as np
-from mission_manager.project_paths import project_root
+from mission_manager.project_paths import runtime_directory
 from .observed_planning import observed_route, endpoint_summary
 import yaml
 import rclpy
@@ -476,7 +476,7 @@ class NavigationServer(Node):
         detail=dict(start=endpoint_summary(planner,pose[:2]),
                     goal=endpoint_summary(planner,target[:2]))
         try:
-            directory=project_root()/'runtime_logs/navigation';directory.mkdir(parents=True,exist_ok=True)
+            directory=runtime_directory()/'navigation';directory.mkdir(parents=True,exist_ok=True)
             path=directory/('blocked_'+str(time.time_ns())+'.npz')
             grid=planner.grid
             np.savez_compressed(path,costs=grid.costs,origin=[grid.ox,grid.oy],

@@ -140,7 +140,7 @@ def test_failure_snapshot_keeps_unknown_and_geometry(tmp_path):
     from robot_navigation.navigation import NavigationServer
     import json
     data=np.zeros((80,120),dtype=np.uint8);data[40,60]=255
-    with patch('robot_navigation.navigation.project_root',return_value=tmp_path):
+    with patch('robot_navigation.navigation.runtime_directory',return_value=tmp_path):
         detail=json.loads(NavigationServer.save_planning_failure(None,planner(data),
                           (2.5,1.,math.pi),(1.5,1.,math.pi)))
     saved=np.load(detail['snapshot'])

@@ -8,7 +8,9 @@ from pathlib import Path
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('file',nargs='?');args=parser.parse_args()
     root=Path(__file__).resolve().parents[1]
-    files=list((root/'navigation/log').glob('run_*/hybrid_metrics.csv'))
+    import os
+    runtime=Path(os.environ.get('ROBOT_RUNTIME_DIR',str(root/'runtime_logs')))
+    files=list((runtime/'simulation/log').glob('run_*/hybrid_metrics.csv'))
     filename=Path(args.file) if args.file else max(files,key=lambda p:p.stat().st_mtime) if files else None
     if filename is None:raise SystemExit('还没有联合验证 CSV；先由操作者运行 run_rack_hybrid.sh')
     with filename.open(encoding='utf-8') as f:rows=list(csv.DictReader(f))

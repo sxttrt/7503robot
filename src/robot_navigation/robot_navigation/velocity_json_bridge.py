@@ -16,7 +16,7 @@ from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from std_msgs.msg import String
 
-from mission_manager.project_paths import project_root
+from .resources import navigation_config
 from .core import load_settings
 
 
@@ -45,8 +45,7 @@ def encode_velocity(message, max_linear_speed, max_angular_speed):
 class VelocityJsonBridge(Node):
     def __init__(self):
         super().__init__('velocity_json_bridge')
-        self.declare_parameter('config_file', str(
-            project_root() / 'src/robot_bringup/config/navigation_robot.yaml'))
+        self.declare_parameter('config_file', str(navigation_config()))
         self.cfg = load_settings(self.get_parameter('config_file').value)
         self.last_received = None
         self.closing = False

@@ -19,7 +19,7 @@ from robot_navigation.core import (load_settings,laser_to_base,WallLocalizer,
 from robot_navigation.navigation import NavigationServer, Tracking
 
 def config():
-    cfg=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')
+    cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     cfg['calibration_verified']=True
     return cfg
 
@@ -42,7 +42,7 @@ def grid():
         update_time=NS(sec=5,nanosec=0)),data=[0]*(122*80))
 
 def test_template_not_calibrated():
-    assert load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')['calibration_verified'] is False
+    assert load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')['calibration_verified'] is False
 
 @pytest.mark.parametrize('name,value', [('laser_pose',[0,0,float('nan'),0]),
     ('initial_pose',[9,9,0]),('loaded_half_size',[.01,.01]),('travel_yaw',.5),

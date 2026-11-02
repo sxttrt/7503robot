@@ -12,7 +12,7 @@ from robot_navigation.tracking_control import validate_goal,PathController,body_
 from robot_navigation.path_tracker import PathTracker
 
 def cfg():
-    c=load_settings(project_root()/'src/robot_bringup/config/navigation_robot.yaml')
+    c=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     c['calibration_verified']=True;return c
 
 def goal(points=((1,1),(1.3,1),(1.3,1.4)),yaw=math.pi,rotation=False,carrying=False):

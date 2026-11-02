@@ -72,7 +72,8 @@ def test_setting_false_restores_conservative_unknown_policy():
 def test_fixed_real_and_generated_hybrid_maps_cover_field_and_preserve_raw_unknown():
     for name in ('robot','hybrid'):
         folder=project_root()/'src/robot_bringup/config'
-        cfg=load_settings(folder/f'navigation_{name}.yaml')
+        cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml'
+                          if name=='robot' else folder/'navigation_hybrid.yaml')
         params=yaml.safe_load((folder/f'costmap_{name}.yaml').read_text())['global_costmap']['global_costmap']['ros__parameters']
         assert cfg['allow_unknown_in_field'] is True
         assert params['rolling_window'] is False

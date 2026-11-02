@@ -15,7 +15,8 @@ from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from mission_manager.project_paths import project_root
+from mission_manager.project_paths import runtime_directory
+from .resources import navigation_config
 from .core import load_settings, pose_values
 
 
@@ -80,11 +81,11 @@ def forward_command(speed):
 class ChassisTest(Node):
     def __init__(self):
         super().__init__('chassis_test')  # ROS graph names use ASCII; entry is 底盘测试脚本.sh.
-        self.declare_parameter('config_file',str(project_root()/'src/robot_bringup/config/navigation_robot.yaml'))
+        self.declare_parameter('config_file',str(navigation_config()))
         self.declare_parameter('speed',.05)
         self.declare_parameter('duration_sec',5.)
         self.declare_parameter('wait_timeout_sec',5.)
-        filename=project_root()/'runtime_logs/chassis_test'/('test_'+str(time.time_ns())+'.csv')
+        filename=runtime_directory()/'chassis_test'/('test_'+str(time.time_ns())+'.csv')
         self.declare_parameter('csv_file',str(filename))
         if self.get_parameter('use_sim_time').value:
             raise ValueError('chassis_test uses real wall time; use_sim_time must be false')

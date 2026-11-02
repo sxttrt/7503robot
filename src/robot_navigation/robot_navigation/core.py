@@ -1,15 +1,11 @@
 """无 ROS 的实机校验与几何；复用项目内已验证算法，不导入仿真执行桥。"""
 import math
-import sys
 import numpy as np
 import yaml
-from mission_manager.project_paths import navigation_root
-
-sys.path.insert(0, str(navigation_root() / 'scripts'))
-from lidar_geometry import WallLocalizer, scan_points, wrap
-from grid_planner import GridMap, Planner
-from costmap_cache import CostmapCache
-from published_costmap_cache import PublishedCostmapCache
+from .algorithms.lidar_geometry import WallLocalizer, scan_points, wrap
+from .algorithms.grid_planner import GridMap, Planner
+from .algorithms.costmap_cache import CostmapCache
+from .algorithms.published_costmap_cache import PublishedCostmapCache
 
 def load_settings(path):
     with open(path, encoding='utf-8') as stream:

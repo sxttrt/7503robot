@@ -85,7 +85,7 @@ def test_dock_requires_current_framework_operation(change):
 
 
 def test_real_template_has_no_simulation_fallback():
-    cfg=load_settings(FOLDER/'navigation_robot.yaml')
+    cfg=load_settings(project_root()/'src/robot_navigation/config/navigation_robot.yaml')
     real=DockGeometry(read_yaml(FOLDER/'navigation_points_robot.yaml'),cfg)
     with pytest.raises(ValueError,match='实测'):real.request(request(),False)
     with pytest.raises(ValueError,match='实机'):geometry().request(request(),False)
@@ -227,7 +227,7 @@ def test_joint_bridge_does_not_select_wrong_rack_pose():
 
 
 def test_hybrid_bridge_disables_duplicate_navigation_and_dock_servers():
-    launch=(project_root()/'src/robot_bringup/launch/rack_hybrid.launch.py').read_text()
+    launch=(project_root()/'src/robot_bringup/launch/rack_hybrid_frontend.launch.py').read_text()
     assert "'provide_docking':False" in launch and "'provide_navigation':False" in launch
 
 
